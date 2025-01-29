@@ -3,58 +3,38 @@ import matplotlib.pyplot as plt
 from scipy import special
 from pdb import set_trace
 
-def residual_flare(params, t, y, yerr, complexity=1):
-    return (y - exp_line(t, params, complexity=complexity))/yerr
-
 def residual_line(params, t, y, yerr):
 
     if (yerr == 0.).all():
         yerr = np.ones(len(y))
 
-    return (y - np.polyval([params['a'], params['b'], params['c']], t))/yerr
+    a = params['a']
+    b = params['b']
+    c = params['c']
 
-def flare_dip_residuals(par, t, data, err, complexity):
     try:
-        return (data - (flare_dip(par, t) + exp_convolved(t, par, complexity=complexity) \
-                + np.polyval([par['d'], par['e'], par['f']], t)))/err
-    except FloatingPointError:
-        return np.zeros(len(data)) + 1e6
-
-    #return (data - (dip(par, t) + exp_doubledecay(t, par, complexity=1) \
-    #            + np.polyval([par['d'], par['e'], par['f']], t)))/err
-
-def exp_line(t, params, complexity=1):
-    return exp_doubledecay(t, params, complexity=complexity) \
-         + np.polyval([params['d'], params['e'], params['f']], t)
-
-def gauss_residuals(par, t, data, err):
-
-    gaussleft = np.exp(-(t[t < par['x0']] - par['x0'])**2/(2.*par['w1']**2))
-    gaussright = np.exp(-(t[t >= par['x0']] - par['x0'])**2/(2.*par['w2']**2))
-    gauss = par['A']*np.concatenate((gaussleft, gaussright))
-    return (data - gauss - np.polyval([par['d'], par['e'], par['f']], t))/err
+        return (y - np.polyval([a, b, c], t))/yerr
+    except AttributeError:
+        set_trace()
 
 def flare_dip(par, x, plots=False, add_flare=False):
 
-    #val = par.valuesdict()
+    Gdip = par['Gdip']
     x0 = par['x0']
+    w1 = par['w1']
+    w2 = par['w2']
+    n = par['n']
 
     dipvalid = x >= x0
-    #if dip_position == 'pre':
-    #    dipvalid = np.logical_and(x >= x0, x < 0.)
-    #elif dip_position == 'post':
-    #    dipvalid = np.logical_and(x >= x0, x > 0.)
-    exponent1 = -(abs(x[dipvalid] - x0)/par['w2'])**par['n']
+    
+    exponent1 = -(abs(x[dipvalid] - x0)/w2)**n
     exponent1[exponent1 < -100.] = -100.
-    exponent2 = -(abs(x[x < x0] - x0)/par['w1'])**par['n']
+    exponent2 = -(abs(x[x < x0] - x0)/w1)**n
     exponent2[exponent2 < -100.] = -100.
 
     y = np.zeros(len(x))
-    y[dipvalid] = par['A']*np.exp(exponent1)
-    y[x < x0] = par['A']*np.exp(exponent2)
-
-    if add_flare:
-        y += exp_line(x, par, complexity=complexity)
+    y[dipvalid] = Gdip*np.exp(exponent1)
+    y[x < x0] = Gdip*np.exp(exponent2)
 
     if np.sum(np.isinf(y)) > 0:
         set_trace()
@@ -120,29 +100,6 @@ def exp_doubledecay(t, pars, complexity=1, plots=False):
 
     return mod
 
-def gaussian_bump(t, par, plots=False):
-    '''
-    Asymmetric Gaussian function to incldue bumps and flat tops.
-    '''
-
-    x0 = par['g_t0']
-    dipvalid = t >= x0
-    exponent1 = -(abs(t[dipvalid] - x0)/par['g_w2'])**par['g_n']
-    exponent1[exponent1 < -100.] = -100.
-    exponent2 = -(abs(t[t < x0] - x0)/par['g_w1'])**par['g_n']
-    exponent2[exponent2 < -100.] = -100.
-
-    y = np.zeros(len(t))
-    y[dipvalid] = par['g_ampl']*np.exp(exponent1)
-    y[t < x0] = par['g_ampl']*np.exp(exponent2)
-
-    if plots and par['g_ampl'] > 0.:
-        plt.plot(t, y)
-        plt.show()
-        set_trace()
-
-    return y
-
 def exp_convolved(t, par, complexity=1, plots=False):
     '''
     Convolution of double exponential and Gaussian function, from Mendoza+2022.
@@ -171,8 +128,6 @@ def exp_convolved(t, par, complexity=1, plots=False):
 
     if np.sum(np.logical_or(np.isnan(mod), np.isinf(mod))) > 0:
         return np.zeros(len(t)) + 1e6
-    #if (mod == 0.).all():
-    #    set_trace()
 
     if plots:
         plt.close('all')
@@ -183,15 +138,17 @@ def exp_convolved(t, par, complexity=1, plots=False):
     return mod
 
 # Mendoza models
-def flare_eqn(t, ampl):
+def flare_eqn(t, ampl, D2=1.2151):
     '''
-    The equation that defines the shape for the Continuous Flare Model
+    The equation that defines the shape for the Continuous Flare Model.
+    The value of the slow decay timescale is set by default to the one of
+    Mendoza+2022.
     '''
     #Values were fit & calculated using MCMC 256 walkers and 30000 steps
+    A, B, C, D1, F1 = [0.9688, -0.2513, 0.2268, 0.1555, 0.1270]
 
-    A, B, C, D1, D2, F1 = [0.9688, -0.2513, 0.2268, 0.1555, 1.2151, 0.1270]
-
-    # We include the corresponding errors for each parameter from the MCMC analysis
+    # We include the corresponding errors for each parameter from the MCMC
+    # analysis
     A_err, B_err, C_err, D1_err, D2_err, F1_err \
         = [0.0079, 0.0004, 0.0007, 0.0013, 0.0045, 0.0011]
 
@@ -209,7 +166,6 @@ def flare_eqn(t, ampl):
         eqn = np.zeros(len(t))
 
     return eqn*ampl
-
 
 def flare_model_mendoza(t, par, complexity=1, plots=False):
     '''
@@ -243,15 +199,19 @@ def flare_model_mendoza(t, par, complexity=1, plots=False):
     flare : 1-d array
         The flux of the flare model evaluated at each time
 
-        A continuous flare template whose shape is defined by the convolution of a Gaussian and double exponential
-        and can be parameterized by three parameters: center time (tpeak), FWHM, and ampitude
+        A continuous flare template whose shape is defined by the convolution
+        of a Gaussian and double exponential and can be parameterized by
+        three parameters: center time (tpeak), FWHM, and ampitude
     '''
 
     flare = np.zeros(len(t))
 
     for c in np.arange(complexity):
-        t_new = (t - par['tpeak' + str(c)])/par['fwhm' + str(c)]
-        flare += flare_eqn(t_new, par['ampl' + str(c)])
+        tpeak = par['tpeak' + str(c)]
+        fwhm = par['fwhm' + str(c)]
+        ampl = par['ampl' + str(c)]
+        t_new = (t - tpeak)/fwhm
+        flare += flare_eqn(t_new, ampl, D2=par['D2' + str(c)])
 
     if plots:
         plt.close('all')
@@ -262,6 +222,25 @@ def flare_model_mendoza(t, par, complexity=1, plots=False):
     return flare
 
 def mendoza_residuals(par, t, data, err, complexity=1):
-    return (data - (flare_dip(par, t) + flare_model_mendoza(t, par, \
-                    complexity=complexity) \
-                    + np.polyval([par['d'], par['e'], par['f']], t)))/err
+    '''
+    01/07/24: flare part taken out, to be fitted only on the out-of-flare flux.
+    '''
+
+    d = par['d']
+    e = par['e']
+    f = par['f']
+
+    return (data - flare_model_mendoza(t, par, complexity=complexity) \
+                     - flare_dip(par, t) - np.polyval([d, e, f], t))/err
+
+def flare_dip_residuals(par, t, data, err, complexity):
+    '''
+    This is used by the non-constrained Mendoza model function (so, at this
+    time, never).
+    '''
+    try:
+        return (data - (flare_dip(par, t) + exp_convolved(t, par, \
+                complexity=complexity) \
+                + np.polyval([par['d'], par['e'], par['f']], t)))/err
+    except FloatingPointError:
+        return np.zeros(len(data)) + 1e6

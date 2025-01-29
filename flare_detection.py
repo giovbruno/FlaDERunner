@@ -1,47 +1,37 @@
 import os
-home = os.path.expanduser('~')
-import sys
-import glob
-from scipy.signal import medfilt
-from scipy.interpolate import interp1d, UnivariateSpline
-from scipy import optimize, stats
-import gp_utilities
-from astropy.timeseries import LombScargle
+from scipy import signal, optimize
+from scipy.interpolate import splrep, BSpline, CubicSpline, interp1d
 import astropy.units as u
-muHz = u.def_unit('muHz', 1e-6*u.Hz)
 from astropy.stats import sigma_clip
 from astropy.io import fits
-from astropy import timeseries
-import celerite2
-from celerite2 import terms
+from astropy import timeseries, constants
+from hurst import compute_Hc
 import numpy as np
 import copy
-import lc_obs
-from matplotlib.backends.backend_pdf import PdfPages
-import matplotlib.pyplot as plt
+import lc_class
 import peakutils.peak as peakut
 import smooth
+import celerite2
+import gp_utilities
 from lmfit import Parameters, fit_report, minimize
-#from pyts.decomposition import SingularSpectrumAnalysis as SSA
-from pdb import set_trace
-import warnings
-warnings.filterwarnings("ignore")
 import flare_class
 import pickle
 import models
-import rebin
+from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.pyplot as plt
+import warnings
+warnings.filterwarnings("ignore")
+from pdb import set_trace
 
-def find_flares(lcfile, stdflare=0., \
-        tstar=5777., rstar=1., wth=None, fth=None, peaki=[], \
-        smoothmode='smooth', plot_flat=False, rednoise=[], \
-        flarepeakfilter=10, flare_threshold=5., outlier_thresh=8., \
-        fit_continuum=0, force_fit=False, clip=True, normalise=True, \
+def find_flares(lcfile, flatten=True, \
+        tstar=None, rstar=None, wth=None, fth=None, peaki=[], \
+        plot_flat=False, flare_threshold=5., outlier_thresh=8., \
+        fit_continuum=0, clip=True, normalise=True, \
         complexity=5, saveplots='', min_datapoints=3, rebin=0,
-        filt_kernel_size=11):
+        filt_kernel_size=11, plot_clip=False, verbose=True):
     '''
     Parameters
     ----------
-    pxdivide for 25 s LCs: 1000. This factor is multiplied for larger cadences.
     peaki: list of peaks can be provided
 
     rednoise (list of 3 elements): it can be provided here, or is calculated
@@ -57,33 +47,56 @@ def find_flares(lcfile, stdflare=0., \
         if np.shape(lcfile)[0] == 3:
             yerr = lcfile[2]
         else:
-            yerr = None
+            yerr = np.std(y)
+        header = None
     elif type(lcfile) == str and \
                 (lcfile.endswith('.dat') or lcfile.endswith('.txt')):
         print('\nLC file:', lcfile.split(lcfolder)[1], '\n')
         t, y = np.loadtxt(lcfile, unpack=True)
-        yerr = None
+        yerr = np.std(y)
+        header = None
     elif type(lcfile) == str and lcfile.endswith('.fits'):
-        lc = fits.open(lcfile)
+        try:
+            lc = fits.open(lcfile, ignore_missing_simple=True)
+        except OSError:
+            print('OSError: Empty or corrupt FITS file')
+            return [], []
+
+        # For a TESS-like fits file
+        header = lc[0].header
+        try:
+            if header['TEFF'] is not None:
+                tstar = header['TEFF']*u.K
+            else:
+                tstar = None
+        except KeyError:
+            tstar = None
+        try:
+            if header['RADIUS'] is not None:
+                rstar = header['RADIUS']*constants.R_sun
+            else:
+                rstar = None
+        except KeyError:
+            rstar = None
         try:
             t = lc[1].data['TIME']
             y = lc[1].data['PDCSAP_FLUX']
             yerr = lc[1].data['PDCSAP_FLUX_ERR']
         except TypeError: # Problem with the dataset
-            return []
-
-    # Get or determine uncertainties
-    if yerr is None:
-        yerr = np.zeros(len(t)) + stdflare
-        #filt1 = smooth.smooth(y, window_len=filter_std)
-        #yerr = np.zeros(len(t)) + np.std(y - filt1)
+            return [], []
+        except AttributeError:
+            return [], []
 
     # Remove all NaNs
     flag = np.isnan(y)
     t, y, yerr = t[~flag], y[~flag], yerr[~flag]
 
+    if np.diff(t).min() < 0.:
+        print('Possibly damaged file')
+        return [], []
+
     if rebin > 1:
-        light_curve = lc_obs.LC(t=t, y=y, yerr=yerr)
+        light_curve = lc_class.LC(t, y, yerr=yerr)
         t, y, yerr = light_curve.rebin(rebin)
 
     # Normalise LC
@@ -92,159 +105,169 @@ def find_flares(lcfile, stdflare=0., \
         y /= abs(np.median(y))
 
     # Remove stellar variability - this is to fit the flare profiles
-    if smoothmode is not None:
-        xf, yf, yferr, ls_quiet, rednoise \
-            = smooth_LC(t, y, yerr, plots=False, mode=smoothmode, \
-                savefile=saveplots.replace('.pdf','_LC_detrended.pic').replace( \
-                '.fits', '_LC_detrended.pic'))
-        # These will be the points for the smoothing calculation
-        filt_var_int = interp1d(xf, yf, bounds_error=False, \
-                    fill_value='extrapolate')
-        filt_var = filt_var_int(t)
-        if len(filt_var) == len(y) + 1:
-            filt_var = filt_var[:-1]
+    if flatten:
+        yf, yferr, ls_quiet, rednoise, header, tck = flatten_LC( \
+                t, y, yerr, plots=False, mode='smooth', \
+                header=header, savefile='', compute_rednoise=True)
     else:
-        xf, yf, yferr = np.copy(t), np.zeros(len(t)), np.zeros(len(t)) \
-                        + np.median(yerr)
-        #y /= np.median(y)
+        yf, yferr = np.zeros(len(t)), np.zeros(len(t)) + np.median(yerr)
         freq, power = [], []
         ls_quiet = np.zeros(len(y))
-        filt_var = np.copy(yf)
-
-    yflat = y - filt_var
+    yflat = y - yf
 
     # Remove outliers
     tini = np.copy(t)
     if clip:
-        #plt.close('all')
-        #plt.plot(t, yflat)
-        yflatfilt = medfilt(yflat, kernel_size=3)
+        if plot_clip:
+            plt.close('all')
+            plt.plot(t, yflat)
+        yflatfilt = signal.medfilt(yflat, kernel_size=3)
         mask = sigma_clip(yflat - yflatfilt, sigma=outlier_thresh)
         t = t[~mask.mask]
         yflat = yflat[~mask.mask]
-        #yerr = yerr[~mask.mask]
+        yerr = yerr[~mask.mask]
         tini = tini[~mask.mask]
-        filt_var = filt_var[~mask.mask]
+        yf = yf[~mask.mask]
         y = y[~mask.mask]
-        #noiselev = noiselev[~mask.mask]
-        #plt.plot(t, yflat)
-        #plt.show()
-        #set_trace()
-    # Both on LC and on binned version of LC
-    if stdflare == 0.:
-        #stdflare = np.median(yerr)#nanstd(yfilt)
-        stdflare = np.copy(yferr)
+        if plot_clip:
+            plt.plot(t, yflat)
+            plt.show()
+            set_trace()
 
     # This is to find the flare peaks
-    #filt_peaks = smooth.smooth(yflat, window_len=flarepeakfilter)[:len(y)]
-    #yfilt = yflat - filt_peaks
-    #noiselev = yerr#np.sqrt(yerr**2. + stdflare**2.)
     noiselev = np.median(yferr)
     if noiselev == 0:
-        set_trace()
-    #yerr = np.copy(noiselev)
+        print('Problem with data error bar estimation: keeping original ' \
+                + 'error bars')
+        noiselev = np.median(yerr)
+
     if peaki == []:
         peaki = list(peakut.indexes(yflat, thres=flare_threshold*noiselev, \
                         min_dist=10, thres_abs=True))
-        #peaki.append(peakut.indexes(medfilt(y, kernel_size=3), \
-        #        thres=flare_threshold*stdflare, min_dist=10, thres_abs=True))
-        #peaki = np.sort(np.hstack(peaki))
+    print('Detected peaks #1:', len(peaki))
 
-    print('Detected peaks:', len(peaki))
+    # If no flares are found, there's no point in repeating these steps
+    if flatten and len(peaki) > 0:
+        # Two rounds of fitflares: the first one will give flare intervals,
+        # to be used to smooth the LC again. Then, second round of fitflares.
+        # This result is kept if the scatter on the residuals is improved
+        flare_ranges, flarespar = flare_analysis(t, yflat, yerr, peaki, \
+                noiselev, ls_quiet, traw=np.copy(t), yraw=np.copy(y), \
+                threshold=flare_threshold, \
+                rednoise=rednoise, min_datapoints=min_datapoints, \
+                filt_kernel_size=filt_kernel_size, validate=False)
 
-    #if clip:
-    #    # Elements to remove that are not among peaks
-    #    mask2 = np.setdiff1d(np.where(mask.mask), peaki)
-    #    t = np.delete(t, mask2)
-    #    yflat = np.delete(yflat, mask2)
-    #    yerr = np.delete(yerr, mask2)
-    #    tini = np.copy(t)
-    #    filt_var = np.delete(filt_var, mask2)
-    #    y = np.delete(y, mask2)
-    #    noiselev = np.delete(noiselev, mask2)
-    #    # And look for peaks again
-    #    peaki = list(peakut.indexes(yflat, thres=flare_threshold*noiselev, \
-    #                    min_dist=10, thres_abs=True))
+        yf, yferr, ls_quiet, _, header, tck = flatten_LC( \
+                t, y, yerr, plots=True, mode='prewhitening', \
+                compute_rednoise=False, header=header, savefile='', \
+                flare_ranges=flare_ranges, upper_freq=3.)
+
+        yflat = y - yf
+        noiselev = np.median(yferr)
+
+        # Update peak detection
+        peaki = list(peakut.indexes(yflat, thres=flare_threshold*noiselev, \
+                        min_dist=10, thres_abs=True))
+        print('Detected peaks #2:', len(peaki))
 
     # Plot flattended LC
     if plot_flat:
-        plt.figure(figsize=(12, 5))
-        plt.plot(tini, y, '.', alpha=0.5, label='Raw flux')
-        plt.plot(tini, filt_var, label='Quiet flux model')
-        plt.plot(tini, filt_var + flare_threshold*noiselev, '--', \
+        fig, axs = plt.subplots(figsize=(13, 9), nrows=2)
+        axs[0].plot(tini, y, '.', alpha=0.5, label='Raw flux')
+        axs[0].plot(tini, yf, label='Quiet flux model')
+        axs[0].plot(tini, yf + flare_threshold*noiselev, '--', \
                     label='Detection threshold')
-        #plt.plot(t, medfilt(y, kernel_size=3), '--', label='Binned LC')
+        axs[0].set_title('Scatter S/N: {:.1f}'.format(header['scatter_SN']))
         for pp in peaki:
-            plt.plot([t[pp], t[pp]], [y[pp] + 5*yerr.max(), \
+            axs[0].plot([t[pp], t[pp]], [y[pp] + 5*yerr.max(), \
                     y[pp] + 10*yerr.max()], 'c', linewidth=2)
-        plt.legend()
-        plt.xlabel('Time [days]', fontsize=14)
-        plt.ylabel('Relative flux', fontsize=14)
-        plt.savefig(saveplots.replace('.pdf','_LC.pdf').replace( '.fits', '_LC.pdf'))
+        axs[0].legend()
+        axs[0].set_xlabel('Time [days]', fontsize=14)
+        axs[0].set_ylabel('Normalised flux', fontsize=14)
+
+        freq, power = ls_quiet.autopower(nyquist_factor=1.)
+        axs[1].loglog(freq*1e3, power, 'k')
+        axs[1].set_xlabel('Frequency [mHz]', fontsize=14)
+        axs[1].set_ylabel('Power', fontsize=14)
+
+        plt.savefig(saveplots.replace('.pdf','_LC.pdf').replace( \
+                                                    '.fits', '_LC.pdf'))
         plt.show()
         set_trace()
         plt.close('all')
 
-    flarespar = fitflares(t, yflat, yerr, peaki, noiselev, traw=np.copy(t), yraw=y, \
-            threshold=flare_threshold, rednoise=rednoise, \
-            tstar=tstar, rstar=rstar, wth=wth, fth=fth, \
-            fit_continuum=fit_continuum, force_fit=force_fit, \
+    flare_ranges, flarespar = flare_analysis(t, yflat, yerr, peaki, noiselev, \
+            ls_quiet, traw=np.copy(t), yraw=y, threshold=flare_threshold, \
+            validate=True, \
+            rednoise=rednoise, tstar=tstar, rstar=rstar, tflare=9000.*u.K, \
+            wth=wth, fth=fth, fit_continuum=fit_continuum,
             complexity=complexity, min_datapoints=min_datapoints, \
             plotname=saveplots.replace('.pdf','_flares.pdf').replace('.fits', \
-                    '_flares.pdf'), filt_kernel_size=filt_kernel_size)
+                    '_flares.pdf'), filt_kernel_size=filt_kernel_size, \
+            verbose=verbose)
 
     plt.close('all')
+    # Add LC info
+    flarespar.append(header)
 
-    return flarespar
+    # Return an array where data points that belong to flares are flagged as 1
+    flareflag = np.zeros(len(t))
+    arrflag = [np.arange(fr[0], fr[1] + 1) for fr in flare_ranges]
+    if len(arrflag) > 0:
+        flareflag[np.hstack(arrflag)] += 1
 
-def fitflares(t, yflat, yerr, peaki, noise_level, threshold=4., complexity=6, \
-            tstar=None, rstar=None, wth=None, fth=None, rednoise=None, \
-            force_fit=False, fit_continuum=0, plotname='', check_gaps=True, \
-            traw=None, yraw=None, min_datapoints=3, filt_kernel_size=11):
+    return flarespar, flareflag
+
+def flare_analysis(t, yflat, yerr, peaki, noise_level, ls_quiet, \
+            validate=False, threshold=4., complexity=5, tstar=None, \
+            rstar=None, tflare=None, wth=None, fth=None, rednoise=None, \
+            fit_continuum=0, plotname='', traw=None, yraw=None, \
+            min_datapoints=3, filt_kernel_size=11, \
+            save_flare_ranges=False, verbose=False):
     '''
     Iterative flare fit routine. No need for two filtered versions of the LC.
     Build a light curve model with all fitted flares.
 
     Parameters
     ----------
-    time and fluxes for smoothed light curve.
+    time, fluxes and error bars for flattened light curve.
     peaki (list): flare peaks
-    force_fit: assume a flare candidate is a flare (avoid checks)
-    explore_all_peaks: try fit until max complexity, avoiding stopping criteria
     min_datapoints: minimum flare duration in data points
     filt_kernel_size: kernel size for the median filter to be used in the flare
               edges definition
+    validate (bool): fit flare profiles
 
     Returns
     -------
     flarespar: dict with fitted flare parameters
-    chi2min: min reduced chi2 value, to avoid overfitting
-
-    Candidate = 0: non-validated flare
-    Candidate = 1: validated flare
     '''
-
     # This is used to determine flare length, by removing some noise
-    filtflare = medfilt(yflat, kernel_size=filt_kernel_size)
+    filtflare = signal.medfilt(yflat, kernel_size=filt_kernel_size)
 
     flarespar = []
     # This is to check if this flare was already fitted on a multi-peak one
-    pplot = PdfPages(plotname)
+    if validate:
+        pplot = PdfPages(plotname)
 
     nflares = 0
     tuntil = 0
     trawcopy = np.copy(traw)
     yrawcopy = np.copy(yraw)
+
+    flare_ranges = []
     for i, peak in enumerate(peaki):
-        print('Flare #', i + 1, '/', len(peaki))
+        if verbose:
+            print('Flare #', i + 1, '/', len(peaki))
 
         # Get previous fitted peaks
         if peak <= tuntil:
-            print('Already fitted')
+            if verbose:
+                print('Already fitted')
             continue
 
         if len(t) - peak < 10 or peak < 10:
-            print('Too close to dataset edge')
+            if verbose:
+                print('Too close to dataset edge')
             continue
 
         noiselev = np.median(noise_level)
@@ -268,20 +291,9 @@ def fitflares(t, yflat, yerr, peaki, noise_level, threshold=4., complexity=6, \
                     - t[flagright][j]).argmin()]).argmin()
         tfin = np.copy(tend)
 
-        # Estimate flare duration and compare with correlated noise level
-        # (useful when the detrending is not fully effective)
-        duration_estimate = tend - tini
-        rednoise_level = rednoise[1][ \
-                    abs(np.array(rednoise[0]) - duration_estimate).argmin()]
-        significance = abs(yflat[peak])/rednoise_level
-        if significance < 1.:
-            continue
-
         # Add points to help catch the continuum and dips
         # This happened with CHEOPS data!
         dd = np.diff(t)
-        #if (dd == 0.).any():
-        #    set_trace()
         maxleft = int(1./24./dd[dd > 0].min())
         maxright = int(1./24./dd[dd > 0].min())
         indexleft = 0
@@ -298,6 +310,7 @@ def fitflares(t, yflat, yerr, peaki, noise_level, threshold=4., complexity=6, \
 
         tini -= indexleft
         tend += indexright
+
         tuntil = np.copy(tend)
         tw = t[tini:tend] - t[peak]
         traw = trawcopy[tini:tend] - t[peak]
@@ -306,50 +319,27 @@ def fitflares(t, yflat, yerr, peaki, noise_level, threshold=4., complexity=6, \
         yerrw = yerr[tini:tend]
         j = abs(tw).argmin()
 
-        # Flare normalisation
-        #tc = np.concatenate((t[tini:tbeg], t[tfin:tend]))
-        #yc = np.concatenate((yflat[tini:tbeg], yflat[tfin:tend]))
-        #continuum = np.polyfit(tc, yc, 1)
-        #plt.close('all')
-        #plt.plot(tw, yw)
-        #plt.plot(tw, np.polyval(continuum, t[tini:tend]))
-        #plt.show()
-        #set_trace()
-
-        if len(tw) < 3:
-            print('Too short: Probably an outlier')
-            plt.close('all')
-            #set_trace()
+        if len(tw) < min_datapoints:
+            if verbose:
+                print('Too short: Probably an outlier')
             continue
-
-        #if tini == 0 or tend == len(t) - 1:
-        #    print('Probably an edge effect')
-        #    plt.close('all')
-        #    continue
 
         # Reject features that are likely outliers or edge effects
         # If the end of the flare is not identified either, this might
         # be some sort of correlated noise
-        #yw = np.median(yw)
-        #if (yw[j + 1] <= 3.*noiselev + myw or yw[j + 2] <= 3.*noiselev + myw) \
-        #                and not force_fit:
         myw = 0.
-        #if (yw[j : j + 5] <= 3.*noiselev).any() and not force_fit:
         if (yw[j + 1: j + min_datapoints] <= 2.*noiselev).any():
-            #    or (yw[j + 1] < yw[j + 2]) and len(tw) < 10:
-            #or (yw[j + 3: j + 5] <= 2.*noiselev).any()) and not force_fit:
-            print('Too short: probably an outlier')
+            if verbose:
+                print('Too short: probably an outlier')
             continue
 
-        if (np.diff(tw) > np.median(np.diff(t))*10).any() and check_gaps:
+        # Check for data gaps
+        if (np.diff(tw) > np.median(np.diff(t))*10).any():
             # Only consider the flux within gaps
             gaps = np.where(np.diff(tw) > np.median(np.diff(t))*10)[0]
-            # initialize the closest indices as the first and second elements of the array
-            #idx1 = 0
-            #idx2 = 1
+            # initialize the closest indices as the first and second elements
+            # of the array
             if len(gaps) > 1:
-                #idx1 = 0
-                #idx2 = 1
                 # Go look into the first and last LC segment
                 if gaps[0] > j:
                     tw = tw[:gaps[0]]
@@ -367,7 +357,6 @@ def fitflares(t, yflat, yerr, peaki, noise_level, threshold=4., complexity=6, \
                 # loop through the array to find the closest indices
                     for i in range(len(gaps) - 1):
                         if gaps[i] <= j <= gaps[i + 1]:
-                            #if j - gaps[i] < gaps[i + 1] - j:
                             idx1 = i
                             idx2 = i + 1
                             break
@@ -380,79 +369,77 @@ def fitflares(t, yflat, yerr, peaki, noise_level, threshold=4., complexity=6, \
                 if gaps[0] > j:
                     idx1 = 0
                     idx2 = gaps[0]
-                else:#if j > gaps[0]:
+                else:
                     idx1 = gaps[0] + 1
                     idx2 = -1
-                #print('Idx 1, 2:', idx1, idx2)
                 tw = tw[idx1 : idx2]
                 yw = yw[idx1 : idx2]
                 traw = traw[idx1 : idx2]
                 yraw = yraw[idx1 : idx2]
                 yerrw = yerrw[idx1 : idx2]
-            #set_trace()
-        elif not check_gaps:
-            tw = tw[2:-2]
-            yw = yw[2:-2]
-            traw = traw[2:-2]
-            yraw = yraw[2:-2]
-            yerrw = yerrw[2:-2]
 
         # Other check here
-        # 3 is the number of the Gaussian fit parameters
-        if len(tw) < fit_continuum + 3:
-            print('Probably an outlier')
+        if len(tw) < fit_continuum + min_datapoints:
+            if verbose:
+                print('Probably an outlier')
             continue
 
-        # This is necessary because of the data gaps
-        #traw -= t[peak]
-        #traw_ini = abs(traw - tw[0]).argmin()
-        #traw_fin = abs(traw - tw[-1]).argmin()
-        aflare = flare_class.flare(tdata=tw, ydata=yw, yerrdata=yerrw, \
-                tbeg=t[tbeg] - t[peak], tend=t[tfin] - t[peak], \
-                Tstar=tstar, Rstar=rstar, tpeak=t[peak], noise_level=noiselev, \
-                rednoise=rednoise, traw=traw, yraw=yraw)
+        flare_ranges.append([int(tbeg), int(tfin)])
 
-        # First, the case with no flare: if this fit has the best AIC, the
-        # flare is not validated
-        aflare.fit_line()
-        #aflare.fit_gaussian(fit_continuum)
-        aflare.fit_flare_profile(complexity, threshold, \
-                    fit_continuum=fit_continuum)
+        if validate:
+            # This is necessary because of the data gaps
+            aflare = flare_class.flare(tdata=tw, ydata=yw, yerrdata=yerrw, \
+                    tbeg=t[tbeg] - t[peak], tend=t[tfin] - t[peak], tref=t[peak], \
+                    Tstar=tstar, Rstar=rstar, Tflare=tflare, \
+                    tpeak=t[peak], noise_level=noiselev, \
+                    rednoise=rednoise, traw=traw, yraw=yraw, wth=wth, fth=fth)
 
-        if aflare.npeaks > 0:
-            nflares += 1
+            # First, the case with no flare: if this fit has the best BIC,
+            # the flare is not validated
+            aflare.fit_line(verbose=verbose)
+            aflare.fit_flare_profile(complexity, threshold, verbose=verbose, \
+                        fit_continuum=fit_continuum, plots=False)
 
-            # Test dip hypothesis
-            result_dip, dip_delta_aic, significance = aflare.dip_fit()
-            aflare.result_dip = result_dip
-            aflare.dip_delta_aic = dip_delta_aic
-            aflare.dip_significance = significance
-            # Same for CME
-            #xmin = (t[tfin] - t[peak])/aflare.t12.value
-            #if xmin == tw.max():
-            #    xmin -= abs(np.diff(t)[np.diff(t) > 0.]).min()#/aflare.t12.value
-            #xmax = tw.max()#/aflare.t12.value
-            #if xmin == xmax:
-            #    xmin -= abs(np.diff(t)[np.diff(t) > 0.]).min()#/aflare.t12.value
-            #result_cme, cme_delta_aic, significance = aflare.dip_fit(xmin, xmax)
-            #aflare.result_cme = result_cme
-            #aflare.cme_delta_aic = cme_delta_aic
-            #aflare.cme_significance = significance
+            if aflare.npeaks > 0:
+                nflares += 1
+                # Test dip hypothesis
+                result_dip, dip_delta_bic, dip_significance = aflare.fit_dip()
+                aflare.result_dip = result_dip
+                aflare.dip_delta_bic = dip_delta_bic
+                aflare.dip_significance = dip_significance
+                # Same for CME
+                xmin = (t[tfin] - t[peak])
+                if xmin == tw.max():
+                    xmin -= abs(np.diff(t)[np.diff(t) > 0.]).min()
+                xmax = tw.max()
+                if xmin == xmax:
+                    xmin -= abs(np.diff(t)[np.diff(t) > 0.]).min()
+                result_cme, cme_delta_bic, cme_significance \
+                                                = aflare.fit_dip(xmin, xmax)
+                aflare.result_cme = result_cme
+                aflare.cme_delta_bic = cme_delta_bic
+                aflare.cme_significance = cme_significance
 
-            # To uncomment, make sure plotname is a string
-            aflare.plot_models(plot_instance=pplot, plotname=plotname, \
-                        plot_LS=False, showplot=False)
+                aflare.plot_models(plot_instance=pplot, showplot=False)
 
-            flarespar.append(aflare)
+                flarespar.append(aflare)
 
-    pplot.close()
-    if nflares == 0:
+    if validate:
+        pplot.close()
+    if nflares == 0 and validate:
+        print('No validated flares.')
         os.system('rm ' + plotname)
+    elif nflares > 0 and validate:
+        if nflares == 1:
+            ll = 'flare'
+        else:
+            ll = 'flares'
+        print(str(nflares) + ' validated ' + ll + '.')
 
-    return flarespar
+    return flare_ranges, flarespar
 
-def smooth_LC(t, f, ferr, plots=False, mode='smooth', compute_rednoise=True, \
-            savefile=''):
+def flatten_LC(t, f, ferr, plots=False, mode='smooth', compute_rednoise=True, \
+            savefile='', header=None, flare_ranges=[], upper_freq=None):
     '''
     Find a smoothed verision of the LC, removing flares through iterative
     sigma-clipping
@@ -461,101 +448,52 @@ def smooth_LC(t, f, ferr, plots=False, mode='smooth', compute_rednoise=True, \
     or use it as it is.
     '''
 
-    if mode == 'spline':
-        ndatapoints = int(120./(np.median(np.diff(t))*86400.)) # As TESS SC
-        x = t[::ndatapoints]
-        y = f[::ndatapoints]
-    elif mode == 'smooth':
-        freq, power = LombScargle(t*u.day, f).autopower( \
-                maximum_frequency=0.5/np.diff(t*u.day).min())
-        win = freq[power.argmax()]**-1*24./5./u.day # in hours
+    print('Flattening light curve...')
+
+    if len(flare_ranges) > 0:
+        arrflag = [np.arange(fr[0], fr[1] + 1) for fr in flare_ranges]
+        arrflag = np.hstack(arrflag)
+    else:
+        arrflag = []
+
+    if mode == 'smooth' or mode == 'gp':
+        ls = timeseries.LombScargle(t*u.day, f)
+        freq, power = ls.autopower(maximum_frequency=0.5/np.diff(t*u.day).min())
+        Prot = 1./freq[power.argmax()]
+        try:
+            FAP = ls.false_alarm_probability(power.max()).value
+        except FloatingPointError:
+            FAP = -1.
+        win = freq[power.argmax()]**-1*24./10./u.day # in hours
         smooth_factor = int(win*60*60./(np.median(np.diff(t))*86400.))
-    elif mode == 'prewhitening':
-        # First reject large outliers, like transits
-        fmed = medfilt(f, kernel_size=501)
-        fclip = sigma_clip(f - fmed, sigma=3)
-        tcl = t[fclip.mask == False]
-        ycl = f[fclip.mask == False]
-        y = np.copy(f)
-        if np.diff(tcl).min() < 100/86400.:
-            takevery = 1
-        elif np.diff(tcl).min() > 100/86400. and np.diff(tcl).min() < 200/86400.:
-            takevery = 3
-        y_prewhitened = prewhitening(tcl[::takevery], ycl[::takevery], \
-                        plots=False, verbose=False, npeaks=100, nurange=[1, 1000])
-        y_model = ycl[::takevery] - y_prewhitened
-        #yp_int = interp1d(tcl[::takevery], y_model, bounds_error=False, \
-        #                fill_value='extrapolate')
-        #y_model = yp_int(t)
-    #elif mode == 'SSA':
-    #    X = f.reshape(1, -1)
-    #    transformer = SSA(window_size=11)
-    #    X_new = transformer.transform(X)
-    elif mode == 'GP': # Incomplete #
-        freq, power = LombScargle(t*u.day, f).autopower( \
-                maximum_frequency=0.5/np.diff(t*u.day).min())
-        P = 1./freq[power.argmax()].value
-        # Define GP
-        term1 = terms.RotationTerm(sigma=np.std(f), period=P, Q0=1, dQ=1, f=0.5)
-        term2 = terms.SHOTerm(sigma=1e-4, w0=0.1/24., Q=2.**0.5)
-        gp = celerite2.GaussianProcess(term1 + term2, mean=np.median(f))
-        gp.compute(t, yerr=ferr)
-        #initial_params = [np.median(f), np.std(f), P, 0.1, 0.1, 0.5, #np.median(ferr)]
-        initial_params = [np.median(f), np.std(f), P, 0.1, 0.1, 0.5, 1e-3, 0.5/24., np.median(ferr)]
-        bounds = [(np.median(f) - np.median(ferr)*3., np.median(f) + np.median(ferr)), \
-                (1e-6, 3.*np.std(f)), (0.1, 100.), (0.1, 10.), \
-                (0.1, 10.), (1e-6, 1. - 1e-6), (1e-5, 1e-2), (0.05/24., 3./24.), (np.median(ferr), 3.*np.median(ferr))]
-        soln = optimize.minimize(gp_utilities.neg_log_like, initial_params, \
-                    bounds=bounds, method="L-BFGS-B", args=(gp, t, f, ferr))
-        opt_gp = gp_utilities.set_params(soln.x, gp, t, ferr)
-        y_model = opt_gp.predict(f, t, return_var=False)
-        y_model_GP = np.copy(y_model)
-        y = np.copy(f)
-        x = np.copy(t)
-    elif mode == 'pspline':
-        flatten_lc, y_model = flatten(t, f, method='pspline', edge_cutoff=0.05, \
-                        stdev_cut=3, return_trend=True, break_tolerance=0.1)
-        # Remove NaNs from y_model
-        nn = np.isnan(y_model)
-        y_model = y_model[~nn]
-        y = f[~nn]
-        x = t[~nn]
+
+    if 'Prot' in locals():
+        header['Prot_[days]'] = Prot.to(u.day).value
+    if 'FAP' in locals():
+        header['FAP'] = FAP
 
     # At most 1% of the points can be removed before smoothing. Start
     # with a 3-sigma rejection threshold, then increased if too many points
     # are rejected
-    #if mode != 'prewhitening':# and mode != 'GP':
     f_removed = 10.
     n_removed = 0
     sigma_threshold = 1.
-    iter = 0
-    if mode != 'pspline':
-        while f_removed > 0.03:
-            x = np.copy(t)
-            y = np.copy(f)
-            yerr = np.copy(ferr)
+    if mode == 'smooth':
+        while f_removed > 0.1:
+            if len(flare_ranges) == 0 :
+                x = np.copy(t)
+                y = np.copy(f)
+                yerr = np.copy(ferr)
+            # Use previously found flare ranges to refine flare removal.
+            else:
+                x = np.delete(t, arrflag)
+                y = np.delete(f, arrflag)
+                yerr = np.delete(ferr, arrflag)
             n_removed = 0
             nmask = 10
             while nmask > 0:
-                if mode == 'smooth':
-                    y_model = smooth.smooth(y, window_len= \
-                            min([int(len(y)/5.), smooth_factor]))[:len(x)]
-                elif mode == 'spline':
-                    #model = splrep(x, y, k=3, s=0.5)
-                    #y_model = splev(x, model)
-                    model = UnivariateSpline(x, y, k=3, s=0.016)
-                    y_model = model(x)
-                elif mode == 'GP':
-                    soln = optimize.minimize(gp_utilities.neg_log_like, \
-                        initial_params, method="L-BFGS-B", \
-                        bounds=bounds, args=(gp, x, y, yerr))
-                    opt_gp = gp_utilities.set_params(soln.x, gp, x, yerr)
-                    gp.compute(x, yerr=yerr)
-                    y_model = opt_gp.predict(y, x, return_var=False)
-                elif mode == 'prewhitening':
-                    y_prewhitened = prewhitening(x, y, \
-                            npeaks=100, nurange=[1, 1000])
-                    y_model = y - y_prewhitened
+                y_model = smooth.smooth(y, window_len= \
+                        min([int(len(y)/5.), smooth_factor]))[:len(x)]
                 yc = sigma_clip(y - y_model, sigma=sigma_threshold)
                 nmask = np.sum(yc.mask)
                 x = x[~yc.mask]
@@ -564,321 +502,103 @@ def smooth_LC(t, f, ferr, plots=False, mode='smooth', compute_rednoise=True, \
                 n_removed += np.sum(nmask)
             f_removed = 1. - (len(t) - n_removed)/len(t)
             sigma_threshold += 1
-        #else:
-        #    x = np.copy(t)
 
-    if mode == 'GP':
-        y_model_GP = opt_gp.predict(y, t, return_var=False)
-        # Evaluate uncertainties for a lower number of data points,
-        # then interpolate
-        #opt_gp = gp_utilities.set_params(soln.x, gp, x[::100], yerr[::100])
-        y_model_i, y_model_var_i = opt_gp.predict(y, x[::100], return_var=True)
-        #y_model_var_i /= 10.
-        var_int = interp1d(x[::100], y_model_var_i, bounds_error=False, \
-                fill_value='extrapolate')
-        y_model_err = var_int(t)**0.5
+    if mode == 'spline':
+        x = np.delete(t, arrflag)
+        y = np.delete(f, arrflag)
+        yerr = np.delete(ferr, arrflag)
+        tck = splrep(x, y,  w=1./(2.*yerr), s=len(x) - (2.*len(x))**0.5)
+        y_model_int = BSpline(*tck)(t)
+        y_model = BSpline(*tck)(x)
+
+    elif mode == 'prewhitening':
+        x = np.delete(t, arrflag)
+        y = np.delete(f, arrflag)
+        yerr = np.delete(ferr, arrflag)
+        lc = lc_class.LC(x, y, yerr=yerr)
+        y_prewhitened, _, y_model_int = lc.prewhitening(npeaks=30, \
+                upper_freq=upper_freq, plots=False, verbose=False)
+        y_model = np.copy(y_model_int)
+
+    elif mode == 'gp':
+        if len(flare_ranges) == 0:
+            x = np.copy(t)
+            y = np.copy(f)
+            yerr = np.copy(ferr)
+        # Use previously found flare ranges to refine flare removal.
+        else:
+            x = np.delete(t, arrflag)
+            y = np.delete(f, arrflag)
+            yerr = np.delete(ferr, arrflag)
+        # Celerite GP
+        term1 = celerite2.terms.RotationTerm(sigma=np.std(f), \
+                    period=header['Prot_[days]'], Q0=0.1, dQ=10., f=0.5)
+        gp = celerite2.GaussianProcess(term1, mean=np.median(f))
+        gp.compute(x, yerr=yerr)
+        initial_params = [np.std(f), header['Prot_[days]'], \
+                        0.1, 10., 0.5, np.median(ferr)]
+        stdf = np.std(f)
+        bounds = [(stdf, 3.*stdf), \
+                (header['Prot_[days]'] - 1., header['Prot_[days]'] + 1.), \
+                (0.001, 1.), (1., 2.), (0., 1.), (0., 3.*stdf)]
+        soln = optimize.minimize(gp_utilities.neg_log_like, initial_params, \
+                    bounds=bounds, method="L-BFGS-B", args=(gp, x, y, yerr))
+        opt_gp = gp_utilities.set_params(soln.x, gp, x, yerr)
+        y_model_int = opt_gp.predict(y, t, return_var=False)
+        y_model = opt_gp.predict(y, x, return_var=False)
+        #scatter = var**0.5
+
+    # Interpolate smoothing
+    if mode == 'smooth' or mode == 'prewhitening':
+        tck = CubicSpline(x, y_model)
+        #tck = interp1d(x, y_model, fill_value='extrapolate', bounds_error=None)
+        y_model_int = tck(t)
+
+    scatter = np.std(y - y_model)
+    scatter_sn = scatter/np.median(yerr)
 
     if plots:
         plt.plot(t, f, 'b', alpha=0.2)
         plt.plot(x, y, 'b')
-        if mode == 'spline':
-            plt.plot(t, model(t), 'orange', linewidth=3)
-        elif mode == 'smooth' or mode == 'pspline':
-            plt.plot(x, y_model, 'orange', linewidth=3)
-        elif mode == 'prewhitening':
-            plt.plot(x, y_model, 'orange', linewidth=3)
-        elif mode == 'GP':
-            plt.plot(t, y_model_GP, 'r', linewidth=3)
-            plt.fill_between(t, y1=y_model_GP + y_model_err, \
-                        y2=y_model_GP - y_model_err, color='orange')
+        plt.plot(t, y_model_int, 'orange', linewidth=3, \
+                    label='Smooth version after interpolation/prediction')
         plt.xlabel('Time [days]', fontsize=14)
         plt.ylabel('Normalised flux', fontsize=14)
+        plt.legend()
         plt.show()
         set_trace()
         plt.close('all')
 
     # Get PSD of bit of flare-free LC (not normalized)
-    lcminutes = (x - x.min())*u.day.to(u.min)
-    xlc = np.logical_and(lcminutes > 0, lcminutes < 200)
-    ls = timeseries.LombScargle(lcminutes[xlc]*u.min.to(u.s), y[xlc], \
-                normalization='standard', fit_mean=True)
-    #freq = np.linspace(167*1e-6, 10000*1e-6, 1000)
-    #freq, PSD = ls.autopower()#freq)
+    lcsec = (x - x.min())*u.day.to(u.s)
+    ls = timeseries.LombScargle(lcsec, y, normalization='standard', \
+        fit_mean=True)
 
     # Evaluate red noise level on the residuals
     if compute_rednoise:
-        lightc = lc_obs.LC(t=x, y=(y - y_model))
+        lightc = lc_class.LC(x, y - y_model)
         bins, red, white = lightc.correlated_noise(3600./86400., \
                 interval=10, plots=False)
     else:
         bins, red, white = [0., 0., 0.]
 
+    if 'scatter_sn' in locals():
+        header['scatter_SN'] = scatter_sn
+
+    # Get Hurst exponent - this might happen to fail
+    try:
+        hurst_exp, cc, val = compute_Hc(y, kind='price')
+    except FloatingPointError:
+        hurst_exp = -1.
+    if 'hurst_exp' in locals():
+        header['hurst_exp'] = hurst_exp
+
     # Save smoothed LC for later inspection
     if savefile != '':
         fout = open(savefile, 'wb')
+        hdu = fits.PrimaryHDU(data=[x, y - y_model], header=header)
+        hdu.writeto(savefile, overwrite=True)
         pickle.dump([x, y - y_model], fout)
         fout.close()
 
-    if mode == 'smooth' or mode == 'prewhitening':
-        return x, y_model, np.std(y - y_model), ls, [bins, red, white]
-    elif mode == 'pspline':
-        flatten_clipped = sigma_clip(y - y_model, sigma=3)
-        # This avoids a FloatingPointError
-        stddev = np.sqrt(np.sum((flatten_clipped \
-                - np.mean(flatten_clipped))**2)/(len(flatten_clipped) - 1))
-        return x, y_model, stddev, ls, [bins, red, white]
-    elif mode == 'spline':
-        return t, model(t), np.std(y - model(t)), ls, [bins, red, white]
-    elif mode == 'GP':
-        return t, y_model_GP, np.std(y - y_model), ls, [bins, red, white]
-
-def prewhitening(t, y, nurange=[1., 100], npeaks=10, plots=False,
-    verbose=False):
-    '''
-    Remove sinusoidal signals from light curve.
-    '''
-
-    yc = np.copy(y)
-    t2 = (t*u.day).to(u.s).value
-    freq, power = LombScargle(t2, y).autopower( \
-                minimum_frequency=1e-6, maximum_frequency=10000e-6)#277e-6)
-    freq0, power0 = np.copy(freq), np.copy(power)
-    flag = np.logical_and(freq*1e6 >= nurange[0], freq*1e6 <= nurange[1])
-    freq *= u.Hz
-    noiselev = 0.
-
-    for j in np.arange(npeaks):
-        nu0 = freq[flag][power[flag].argmax()]
-        ls = LombScargle(t2, yc)
-        xn = ls.model(t2, nu0.value)
-        yc -= xn
-        freq, power = LombScargle(t2, yc).autopower( \
-                minimum_frequency=1e-6, maximum_frequency=100e-6)
-        flag = np.logical_and(freq*1e6 >= nurange[0], freq*1e6 <= nurange[1])
-        if noiselev == 0.:
-            noiselev = np.std(power[freq*1e6 > 5000])#np.std(power[flag])
-        P_nu0 = power[flag].max()
-        snr = P_nu0 / noiselev
-        #fap = ls.false_alarm_probability(P_nu0)*100.
-        if verbose:
-            print('Iteration:', j, ' FAP:', fap, '%')
-        #if fap > 1:
-        #    break
-        if snr < 4:
-            break
-        freq *= u.Hz
-
-    if plots:
-        plt.figure()
-        plt.plot(t2/60., y - np.median(y), label='Original - median')
-        plt.plot(t2/60., yc, label='Prewhitened')
-        plt.xlabel('Time [min]', fontsize=14)
-        plt.ylabel('Flux [units?]', fontsize=14)
-        plt.legend()
-        plt.figure()
-        plt.semilogx(freq0*1e6, power0, label='Original')
-        plt.semilogx(freq*1e6, power, label='Prewhitened')
-        plt.xlabel(r'$\mu$Hz', fontsize=14)
-        plt.ylabel('LS power', fontsize=14)
-        plt.show()
-        set_trace()
-
-    return yc
-
-def test_cadence_effect():
-    '''
-    Plot a flare profile at different cadences, to test their impact.
-    '''
-
-    ampl_3s = []
-    ampl_21s = []
-    ampl_60s = []
-    durat_3s = []
-    durat_21s = []
-    durat_60s = []
-    true_ampl = []
-    true_durat = []
-
-    for j in np.arange(1000):
-        c2 = 29.30
-        c1 = 0.55
-        par = Parameters()
-        par.add('fwhm0', value=stats.loguniform.rvs(0.5, 20))
-        logL = c2 + np.random.normal(loc=0., scale=0.06) \
-            + (c1 + np.random.normal(loc=0., scale=0.05))*np.log10(par['fwhm0'].value)
-        par.add('ampl0', value=10**logL)
-        par.add('tpeak0', value=0.0)
-        t = np.arange(-120., 6000., 3./60.)
-        y = models.flare_model_mendoza(t, par, plots=False)
-        y /= y.max()
-        true_ampl.append(par['ampl0'].value)
-        true_durat.append(np.ptp(t[y/y.max() > 1e-6]))
-
-        plt.plot(t, y, 'k', label='No noise')
-
-        # Get noise level from quiescent luminosity
-        zeropoint = 2.49769e-9
-        lambdaeff = 5850.88
-        distance = 10*u.pc
-        mag = 9.#np.random.uniform(7, 12)
-        # Flux densities --> fluxes with effective wavelength
-        F0 = zeropoint*u.erg/u.cm**2/u.s/u.A
-        F = F0*10**(-mag/2.5)*lambdaeff*u.A
-        L_quiesc = 4.*np.pi*distance.to(u.cm)**2*F
-
-        noiselevel = 240*1e-6#*L_quiesc.value#stats.loguniform.rvs(1e-4, 1e-2)
-        y += np.random.normal(loc=0., scale=noiselevel, size=len(t))
-        #if np.sum(flag) > 0
-        tini, tfin = find_duration_simple(t, y, noiselevel)
-        #aflare = flare_class.flare(tdata=t[tini - 10:tfin + 10]/(24*60), \
-        #        ydata=y[tini - 10:tfin + 10]/y.max(), \
-        #        noise_level=noiselevel/y.max(), \
-        #        yerrdata=np.zeros(tfin-tini + 20)+noiselevel/y.max(), \
-        #        tbeg=t[tini]/(24.*60.), tend=t[tfin]/(24.*60.), tpeak=0.)
-        #aflare.fit_line()
-        #aflare.fit_flare_profile(1, 4)
-        #try:
-        #    #durat_3s.append(aflare.durations[0].to(u.min).value)
-        #    durat_3s.append(aflare.result_nodip.params['fwhm0'].value*24*60.)
-        #except AttributeError:
-        #    set_trace()
-        #ampl_3s.append(aflare.result_nodip.params['ampl0']*y.max())
-        #else:
-        #    print(par)
-        #    set_trace()
-        plt.plot(t, y, '+-', label='3 s')
-        plt.plot([t[tini], t[tini]], [y.min(), 2*y.max()], '--', c='tab:blue')
-        plt.plot([t[tfin], t[tfin]], [y.min(), 2*y.max()], '--', c='tab:blue')
-
-        rebfactor = [7, 20]
-        labels = ['21 s', '1 min']
-        for i, reb in enumerate(rebfactor):
-            ti = rebin.rebin(t, reb)
-            yi = rebin.rebin(y, reb)
-            if reb == 7:
-                noiselevel_7 = noiselevel/(7**0.5)
-                #if np.sum(flag) > 0:
-                tini, tfin = find_duration_simple(ti, yi, noiselevel_7, binning=7)
-                #aflare = flare_class.flare(tdata=ti[tini - 10:tfin + 10]/(24*60), \
-                #        ydata=yi[tini - 10:tfin + 10]/yi.max(), \
-                #        noise_level=noiselevel_7/yi.max(), \
-                #        yerrdata=np.zeros(tfin-tini + 20)+noiselevel_7/yi.max(), \
-                #        tbeg=ti[tini]/(24.*60.), tend=ti[tfin]/(24.*60.), tpeak=0.)
-                #aflare.fit_line()
-                #aflare.fit_flare_profile(1, 4)
-                #try:
-                #    #durat_21s.append(aflare.durations[0].to(u.min).value)
-                #    durat_21s.append(aflare.result_nodip.params['fwhm0'].value*24*60.)
-                #except AttributeError:
-                #    set_trace()
-                #ampl_21s.append(aflare.result_nodip.params['ampl0']*yi.max())
-                color='orange'
-                #else:
-                #    pass
-            elif reb == 20:
-                noiselevel_20 = noiselevel/(20**0.5)
-                #if np.sum(flag) > 0:
-                tini, tfin = find_duration_simple(ti, yi, noiselevel_20, binning=20)
-                #aflare = flare_class.flare(tdata=ti[tini - 10:tfin + 10]/(24*60), \
-                #        ydata=yi[tini - 10:tfin + 10]/yi.max(), \
-                #        noise_level=noiselevel_20/yi.max(), \
-                #        yerrdata=np.zeros(tfin-tini + 20)+noiselevel_20/yi.max(), \
-                #        tbeg=ti[tini]/(24.*60.), tend=ti[tfin]/(24.*60.), tpeak=0.)
-                #aflare.fit_line()
-                #aflare.fit_flare_profile(1, 4, plots=True, plotname='/home/giovanni/Desktop/flaretest.pdf')
-                #try:
-                #    #durat_60s.append(aflare.durations[0].to(u.min).value)
-                #    durat_60s.append(aflare.result_nodip.params['fwhm0'].value*24*60.)
-                #except AttributeError:
-                #    set_trace()
-                #ampl_60s.append(aflare.result_nodip.params['ampl0']*yi.max())
-                color='g'
-                #else:
-                #    pass
-        #    print('Rebin:', reb, ' Obs peak:', yi.max())
-            plt.plot(ti, yi, '+-', label=labels[i])
-            plt.plot([ti[tini], ti[tini]], [yi.min(), 2.*yi.max()], '--', c=color)
-            plt.plot([ti[tfin], ti[tfin]], [yi.min(), 2.*yi.max()], '--', c=color)
-
-        plt.xlabel('Time [min]', fontsize=14)
-        plt.ylabel('Relative flux', fontsize=14)
-        plt.legend()
-        plt.show()
-        set_trace()
-        #plt.close()
-
-    plt.figure()
-
-    fit_params_line = Parameters()
-    fit_params_line.add('a', value=0., vary=False)
-    fit_params_line.add('b', value=0., vary=True)
-    fit_params_line.add('c', value=0., vary=True)
-
-    plt.loglog(durat_60s, ampl_60s, '.', alpha=0.5, label='60 s')
-    fit3 = minimize(models.residual_line, fit_params_line, \
-        calc_covar=False, args=(np.log10(durat_60s), np.log10(ampl_60s), \
-        np.zeros(len(durat_60s)) + noiselevel_20/np.array(ampl_60s)), \
-        method='least_squares', nan_policy='omit')
-    print('Fit 60s:', fit3.params)
-    plt.loglog(durat_60s, 10**np.polyval(fit3.params, np.log10(durat_60s)), 'blue', \
-            linewidth=2)
-
-    plt.loglog(durat_21s, ampl_21s, '.', label='21 s')
-    fit2 = minimize(models.residual_line, fit_params_line, \
-        calc_covar=False, args=(np.log10(durat_21s), np.log10(ampl_21s), \
-        np.zeros(len(durat_21s)) + noiselevel_7/np.array(ampl_21s)), \
-        method='least_squares', nan_policy='omit')
-    print('Fit 21s:', fit2.params)
-    plt.loglog(durat_21s, 10**np.polyval(fit2.params, np.log10(durat_21s)), 'orange', \
-            linewidth=2)
-
-    plt.loglog(durat_3s, ampl_3s, '.', label='3 s')
-    fit1 = minimize(models.residual_line, fit_params_line, \
-        calc_covar=False, args=(np.log10(durat_3s), np.log10(ampl_3s), \
-        np.zeros(len(durat_3s)) + noiselevel/np.array(ampl_3s)), \
-        method='least_squares', nan_policy='omit')
-    print('Fit 3s:', fit1.params)
-    plt.loglog(durat_3s, 10**np.polyval(fit1.params, np.log10(durat_3s)), 'g', \
-            linewidth=2)
-
-    plt.loglog(true_durat, true_ampl, '.', label='True')
-    #fit4 = np.polyfit(np.log10(true_durat), np.log10(true_ampl), \
-    #        deg=1, cov=True)
-    #print('No noise fit:', fit4)
-    #plt.loglog(true_durat, 10**np.polyval(fit4[0], np.log10(true_durat)), 'red', \
-    #        linewidth=2)
-
-    plt.xlabel('Simulated flare FWHM [min]', fontsize=14)
-    plt.ylabel('Simulated flare luminosity [erg s$^{-1}$]', fontsize=14)
-
-    plt.legend()
-
-    plt.savefig( \
-        '/home/giovanni/Projects/CHEOPS/ancillary/shortterm_variability/plots/theoretical_lum_duration_binning.pdf')
-
-    return
-
-def find_duration_simple(t, y, noiselevel, binning=1):
-    '''
-    Including median filters and so on.
-    '''
-    tini = 0
-    tend = 0
-
-    windowcut = int(29/binning**0.5)
-    if windowcut > 1:
-        if windowcut % 2 == 0:
-            windowcut += 1
-        y = medfilt(y, kernel_size=windowcut)
-
-    index = abs(t).argmin()
-    i = 0
-    while y[i + index] > noiselevel:
-        tend += 1
-        i += 1
-    i = 0
-    while y[i + index] > noiselevel:
-        tini -= 1
-        i -= 1
-
-    return tini + index, tend + index
+    return y_model_int, scatter, ls, [bins, red, white], header, tck

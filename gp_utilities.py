@@ -1,41 +1,10 @@
 # Utility functions for GPs.
-#import george
-#from george import kernels
 import celerite2
 from celerite2 import terms
 import numpy as np
 from scipy import stats
 import matplotlib.pyplot as plt
 from pdb import set_trace
-
-def neg_ln_like(par, gp, y):
-    if par[-1] < 1e-2 or par[-1] > 100.:
-        return -np.inf
-    elif np.log10(np.exp(par[-2])) < -12 or np.log10(np.exp(par[-2])) > -4.:
-        return -np.inf
-
-    gp.set_parameter_vector(par)
-    return -gp.log_likelihood(y)
-
-def grad_neg_ln_like(par, gp, y):
-    gp.set_parameter_vector(par)
-    return -gp.grad_log_likelihood(y)
-
-def lnprob(par, gp, y):
-    # Trivial uniform prior.
-    if par[-1] < 1e-2 or par[-1] > 100.:
-        return -np.inf
-    elif np.log10(np.exp(par[-2])) < -12 or np.log10(np.exp(par[-2])) > -4.:
-        return -np.inf
-    elif (abs(par[:-2] > 10.)).any():
-        return -np.inf
-
-    # Update the kernel and compute the lnlikelihood.
-    gp.set_parameter_vector(par)
-    try:
-        return gp.lnlikelihood(y, quiet=True)
-    except AttributeError:
-        return -np.inf
 
 def generate_data(t, plots=True):
 
@@ -56,16 +25,10 @@ def generate_data(t, plots=True):
 
     return y, yerr
 
-################################
-## Rotation stuff ##
-
-def set_params(params, gp, x, yerr):
-    gp.mean = params[0]
-    par = params[1:]
+def set_params(par, gp, x, yerr):
     gp.kernel = terms.RotationTerm(sigma=par[0], period=par[1], Q0=par[2], \
-                dQ=par[3], f=par[4]) \
-                + terms.SHOTerm(sigma=par[5], w0=par[6], Q=2.**0.5)
-    gp.compute(x, diag=yerr**2 + par[7], quiet=True)
+                dQ=par[3], f=par[4])
+    gp.compute(x, diag=yerr**2 + par[5], quiet=True)
     return gp
 
 def neg_log_like(params, gp, x, y, yerr):
