@@ -812,7 +812,7 @@ class flare:
                 self.EDfast = self.get_flare_ED(flag=tfast)
                 self.EDslow = self.get_flare_ED(flag=~tfast)
             #ED = np.trapz(self.yprof, x=tt.to(u.s))
-            ED = self.get_flare_ED()
+            ED = self.get_flare_ED(double_t=double_t)
             if 'luminosity' in dir(self):
                 self.energy = ED*self.luminosity
             else:
@@ -844,7 +844,7 @@ class flare:
 
         self.ED = trapezoid(yprof, x=tt.to(u.s))
 
-        return
+        return self.ED
 
     def get_flare_luminosity(self, instrument, mag, distance, flare_amplitude):
         '''
