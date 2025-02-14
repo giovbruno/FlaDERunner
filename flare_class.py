@@ -393,11 +393,11 @@ class flare:
         # that that can be done in several ways).
         self.EDs = {}
         for nsol in np.arange(self.npeaks):
-            thisflare = self.get_single_profile(nsol, double_t=False)
+            tt, thisflare = self.get_single_profile(nsol, double_t=True)
             flarecopy = copy.deepcopy(self)
             flarecopy.yprof = thisflare
-            flarecopy.get_flare_ED()
-            self.EDs[nsol] = flarecopy.ED
+            ED = flarecopy.get_flare_ED()
+            self.EDs[nsol] = ED
             if self.Tstar is not None and self.Rstar is not None:
                 flarecopy.get_flare_energy(method='shibayama')
 
@@ -617,7 +617,7 @@ class flare:
             param_i.add('D20', value=X.params['D2' + str(nsol)].value)
             thisflare = models.flare_model_mendoza(tt, param_i, complexity=1)
 
-        return thisflare
+        return tt, thisflare
 
     def get_full_profile(self, result, use_residuals=True, mode='mendoza'):
         '''
@@ -645,13 +645,7 @@ class flare:
         on pre-determined noise level.
         '''
 
-        if double_t:
-            tt = np.arange(self.tdata.min().value, self.tdata.max().value*2, \
-                    np.diff(self.tdata).min().value)*u.d
-        else:
-            tt = np.copy(self.tdata)
-
-        thisflare = self.get_single_profile(n, double_t=double_t)
+        tt, thisflare = self.get_single_profile(n, double_t=double_t)
 
         above_noise = thisflare > self.noise_level
         if np.sum(above_noise) > 0:
@@ -693,7 +687,7 @@ class flare:
             self.result_nodip.params['e'], self.result_nodip.params['f']], \
             self.tdata.value)
         for nsol in np.arange(self.npeaks):
-            thisflare = self.get_single_profile(nsol, double_t=False)
+            tt, thisflare = self.get_single_profile(nsol, double_t=False)
             axflare.plot(tplot, quiet + thisflare)
 
         model_dip = self.get_full_profile(self.result_dip)
@@ -771,10 +765,10 @@ class flare:
     def get_flare_energy(self, method='shibayama', double_t=True, npeak=-1):
         '''
         Given a flare profile fit and temperature, computes total energy output.
-        Formulae from Gunther+2020.
+        Formulae from Shubayama et al. (2013) and Davenport et al. (2014).
         See also https://arxiv.org/pdf/1810.03277.pdf
 
-        The Equivalebt Duration is computed also for the fast rise-fast decay
+        The Equivalent Duration can be split for the fast rise-fast decay
         and for the gradual decay phase.
 
         Parameters
@@ -787,32 +781,24 @@ class flare:
         cutting flare profiles. If True, the time axis must be measured in days.
         '''
 
-        if double_t:
-            tt = np.arange(self.tdata.min().value, self.tdata.max().value*2, \
-                    np.diff(self.tdata).min().value)*u.d
-        else:
-            tt = np.copy(self.tdata)
+        tt, thisflare = self.get_single_profile(npeak, double_t=double_t)
 
         if method == 'shibayama':
             bbstar = BlackBody(self.Tstar)(self.wth)
             bbflare = BlackBody(self.Tflare)(self.wth)
             lumratio = trapezoid(bbstar*self.fth, x=self.wth) \
                         / trapezoid(bbflare*self.fth, x=self.wth)
-            Aflare_t = self.yprof*np.pi*self.Rstar**2*lumratio
+            Aflare_t = thisflare*np.pi*self.Rstar**2*lumratio
             Lflare = constants.sigma_sb*(self.Tflare**4)*Aflare_t
-            self.energy = trapezoid(Lflare, x=self.tdata.to(u.s)).to(u.erg)
+            self.energy = trapezoid(Lflare, x=tt.to(u.s)).to(u.erg)
 
         elif method == 'davenport':
             if npeak > -1:
-                #tfast = tt.to(u.s) <= (self.t12.value*u.day).to(u.s)
                 fwhm = self.result_nodip.params['fwhm' + str(npeak)].value*u.day
                 tfast = tt.to(u.s) <= fwhm.to(u.s)
-                #self.EDfast = trapezoid(self.yprof[tfast], x=tt[tfast].to(u.s))
-                #self.EDslow = trapezoid(self.yprof[~tfast], x=tt[~tfast].to(u.s))
                 self.EDfast = self.get_flare_ED(flag=tfast)
                 self.EDslow = self.get_flare_ED(flag=~tfast)
-            #ED = np.trapz(self.yprof, x=tt.to(u.s))
-            ED = self.get_flare_ED(double_t=double_t)
+            ED = self.get_flare_ED(npeak, double_t=double_t)
             if 'luminosity' in dir(self):
                 self.energy = ED*self.luminosity
             else:
@@ -821,7 +807,7 @@ class flare:
 
         return self.energy
 
-    def get_flare_ED(self, double_t=False, flag=None):
+    def get_flare_ED(self, npeak, double_t=True, flag=None):
         '''
         Calculate equivalent duration for a flare.
         The time array can be doubled in case the flare profile is cut because
@@ -831,18 +817,14 @@ class flare:
             print('You must first assign a flare profile through self.yprof.')
             set_trace()
 
-        if double_t:
-            tt = np.arange(self.tdata.min().value, self.tdata.max().value*2, \
-                    np.diff(self.tdata).min().value)*u.d
-        else:
-            tt = np.copy(self.tdata)
+        tt, thisflare = self.get_single_profile(npeak, double_t=double_t)
 
         if flag == None:
             flag = np.full(len(tt), True)
-        yprof = self.yprof[flag]
+        yprof = thisflare[flag]
         tprof = tt[flag]
 
-        self.ED = trapezoid(yprof, x=tt.to(u.s))
+        self.ED = trapezoid(yprof, x=tprof.to(u.s))
 
         return self.ED
 
