@@ -393,13 +393,9 @@ class flare:
         # that that can be done in several ways).
         self.EDs = {}
         for nsol in np.arange(self.npeaks):
-            tt, thisflare = self.get_single_profile(nsol, double_t=True)
-            flarecopy = copy.deepcopy(self)
-            flarecopy.yprof = thisflare
-            ED = flarecopy.get_flare_ED()
-            self.EDs[nsol] = ED
+            self.EDs[nsol] = flare.get_flare_ED(nsol, double_t=True)
             if self.Tstar is not None and self.Rstar is not None:
-                flarecopy.get_flare_energy(method='shibayama')
+                flare.get_flare_energy(nsol, method='shibayama')
 
         if plots:
             plt.close('all')
@@ -581,6 +577,8 @@ class flare:
 
     def get_single_profile(self, nsol, model='mendoza', double_t=True):
         '''
+        Computes an individual flare profile using fitted parameters.
+
         Parameters
         ----------
         double_t: whether to double the length of the time axis in order to
@@ -617,7 +615,7 @@ class flare:
             param_i.add('D20', value=X.params['D2' + str(nsol)].value)
             thisflare = models.flare_model_mendoza(tt, param_i, complexity=1)
 
-        return tt, thisflare
+        return tt*self.tdata.unit, thisflare
 
     def get_full_profile(self, result, use_residuals=True, mode='mendoza'):
         '''
@@ -762,7 +760,7 @@ class flare:
 
         return
 
-    def get_flare_energy(self, method='shibayama', double_t=True, npeak=-1):
+    def get_flare_energy(self, npeak, method='shibayama', double_t=True):
         '''
         Given a flare profile fit and temperature, computes total energy output.
         Formulae from Shubayama et al. (2013) and Davenport et al. (2014).
@@ -780,7 +778,6 @@ class flare:
         double_t: whether to double the time time axis duration to avoid
         cutting flare profiles. If True, the time axis must be measured in days.
         '''
-
         tt, thisflare = self.get_single_profile(npeak, double_t=double_t)
 
         if method == 'shibayama':
@@ -793,11 +790,12 @@ class flare:
             self.energy = trapezoid(Lflare, x=tt.to(u.s)).to(u.erg)
 
         elif method == 'davenport':
-            if npeak > -1:
-                fwhm = self.result_nodip.params['fwhm' + str(npeak)].value*u.day
-                tfast = tt.to(u.s) <= fwhm.to(u.s)
-                self.EDfast = self.get_flare_ED(flag=tfast)
-                self.EDslow = self.get_flare_ED(flag=~tfast)
+            # Get also ED for slow and fast decay parts
+            fwhm = self.result_nodip.params['fwhm' + str(npeak)].value*u.day
+            tfast = tt.to(u.s) <= fwhm.to(u.s)
+            self.EDfast = self.get_flare_ED(npeak, flag=tfast)
+            self.EDslow = self.get_flare_ED(npeak, flag=~tfast)
+
             ED = self.get_flare_ED(npeak, double_t=double_t)
             if 'luminosity' in dir(self):
                 self.energy = ED*self.luminosity
@@ -807,23 +805,20 @@ class flare:
 
         return self.energy
 
-    def get_flare_ED(self, npeak, double_t=True, flag=None):
+    def get_flare_ED(self, npeak, double_t=True, flag=[]):
         '''
         Calculate equivalent duration for a flare.
         The time array can be doubled in case the flare profile is cut because
         of lack of data.
         '''
-        if 'yprof' not in dir(self):
-            print('You must first assign a flare profile through self.yprof.')
-            set_trace()
 
         tt, thisflare = self.get_single_profile(npeak, double_t=double_t)
 
-        if flag == None:
+        if len(flag) == 0:
             flag = np.full(len(tt), True)
+
         yprof = thisflare[flag]
         tprof = tt[flag]
-
         self.ED = trapezoid(yprof, x=tprof.to(u.s))
 
         return self.ED
