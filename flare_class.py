@@ -795,12 +795,12 @@ class flare:
             tfast = tt.to(u.s) <= fwhm.to(u.s)
             self.EDfast = self.get_flare_ED(npeak, flag=tfast)
             self.EDslow = self.get_flare_ED(npeak, flag=~tfast)
-
             ED = self.get_flare_ED(npeak, double_t=double_t)
-            if 'luminosity' in dir(self):
-                self.energy = ED*self.luminosity
+            if 'stellar_luminosity' in dir(self):
+                self.energy = ED*self.stellar_luminosity
             else:
-                print('You must compute the flare luminosity first.')
+                print('You must compute the quiescent stellar ' \
+                        + 'luminosity first.')
                 set_trace()
 
         return self.energy
@@ -823,11 +823,11 @@ class flare:
 
         return self.ED
 
-    def get_flare_luminosity(self, instrument, mag, distance, flare_amplitude):
+    def get_stellar_luminosity(self, instrument, mag, distance):
         '''
-        Use stellar magnitude, distance, and instrument zero point (from SVO service)
-        to convert magnitude to quiescent stellar luminosity. Vega mag is assumed
-        to be 0.
+        Use stellar magnitude, distance, and instrument zero point (from SVO
+        service) to convert magnitude to quiescent stellar luminosity for a
+        given fitted peak. Vega mag is assumed to be 0.
         '''
         if instrument == 'CHEOPS': # using Gaia G bandpass
             zeropoint = 2.49769e-9
@@ -840,6 +840,6 @@ class flare:
         F0 = zeropoint*u.erg/u.cm**2/u.s/u.A
         F = F0*10**(-mag/2.5)*lambdaeff*u.A
         L_quiesc = 4.*np.pi*distance.to(u.cm)**2*F
-        self.luminosity = L_quiesc*flare_amplitude
+        self.stellar_luminosity = L_quiesc
 
-        return self.luminosity
+        return self.stellar_luminosity
