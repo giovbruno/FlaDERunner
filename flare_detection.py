@@ -158,7 +158,7 @@ def find_flares(lcfile, flatten=True, \
                 filt_kernel_size=filt_kernel_size, validate=False)
 
         yf, yferr, ls_quiet, _, header, tck = flatten_LC( \
-                t, y, yerr, plots=True, mode='prewhitening', \
+                t, y, yerr, plots=False, mode='prewhitening', \
                 compute_rednoise=False, header=header, savefile='', \
                 flare_ranges=flare_ranges, upper_freq=3.)
 
@@ -398,7 +398,8 @@ def flare_analysis(t, yflat, yerr, peaki, noise_level, ls_quiet, \
             # the flare is not validated
             aflare.fit_line(verbose=verbose)
             aflare.fit_flare_profile(complexity, threshold, verbose=verbose, \
-                        fit_continuum=fit_continuum, plots=False)
+                        fit_continuum=fit_continuum, fit_slowdecay=False, \
+                        plots=False)
 
             if aflare.npeaks > 0:
                 nflares += 1
@@ -458,7 +459,9 @@ def flatten_LC(t, f, ferr, plots=False, mode='smooth', compute_rednoise=True, \
 
     if mode == 'smooth' or mode == 'gp':
         ls = timeseries.LombScargle(t*u.day, f)
-        freq, power = ls.autopower(maximum_frequency=0.5/np.diff(t*u.day).min())
+        freq, power = ls.autopower( \
+                        minimum_frequency=3./(np.ptp(np.sort(t))*u.day), \
+                        maximum_frequency=1./(0.1*u.day))
         Prot = 1./freq[power.argmax()]
         try:
             FAP = ls.false_alarm_probability(power.max()).value

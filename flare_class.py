@@ -392,10 +392,12 @@ class flare:
         # flare energy estimation are left for the result analysis phase, given
         # that that can be done in several ways).
         self.EDs = {}
+        self.energies = {}
         for nsol in np.arange(self.npeaks):
-            self.EDs[nsol] = flare.get_flare_ED(nsol, double_t=True)
+            self.EDs[nsol] = self.get_flare_ED(nsol, double_t=True)
             if self.Tstar is not None and self.Rstar is not None:
-                flare.get_flare_energy(nsol, method='shibayama')
+                self.energies[nsol] \
+                        = self.get_flare_energy(nsol, method='shibayama')
 
         if plots:
             plt.close('all')
@@ -787,23 +789,23 @@ class flare:
                         / trapezoid(bbflare*self.fth, x=self.wth)
             Aflare_t = thisflare*np.pi*self.Rstar**2*lumratio
             Lflare = constants.sigma_sb*(self.Tflare**4)*Aflare_t
-            self.energy = trapezoid(Lflare, x=tt.to(u.s)).to(u.erg)
+            flare_energy = trapezoid(Lflare, x=tt.to(u.s)).to(u.erg)
 
         elif method == 'davenport':
             # Get also ED for slow and fast decay parts
             fwhm = self.result_nodip.params['fwhm' + str(npeak)].value*u.day
             tfast = tt.to(u.s) <= fwhm.to(u.s)
-            self.EDfast = self.get_flare_ED(npeak, flag=tfast)
-            self.EDslow = self.get_flare_ED(npeak, flag=~tfast)
+            EDfast = self.get_flare_ED(npeak, double_t=double_t, flag=tfast)
+            EDslow = self.get_flare_ED(npeak, double_t=double_t, flag=~tfast)
             ED = self.get_flare_ED(npeak, double_t=double_t)
             if 'stellar_luminosity' in dir(self):
-                self.energy = ED*self.stellar_luminosity
+                flare_energy = ED*self.stellar_luminosity
             else:
                 print('You must compute the quiescent stellar ' \
                         + 'luminosity first.')
                 set_trace()
 
-        return self.energy
+        return flare_energy
 
     def get_flare_ED(self, npeak, double_t=True, flag=[]):
         '''
@@ -819,9 +821,9 @@ class flare:
 
         yprof = thisflare[flag]
         tprof = tt[flag]
-        self.ED = trapezoid(yprof, x=tprof.to(u.s))
+        ED = trapezoid(yprof, x=tprof.to(u.s))
 
-        return self.ED
+        return ED
 
     def get_stellar_luminosity(self, instrument, mag, distance):
         '''
