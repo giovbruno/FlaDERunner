@@ -559,6 +559,7 @@ def flatten_LC(t, f, ferr, plots=False, mode='smooth', compute_rednoise=True, \
 
     scatter = np.std(y - y_model)
     scatter_sn = scatter/np.median(yerr)
+    header['phot_var'] = np.ptp(y_model)
 
     if plots:
         plt.plot(t, f, 'b', alpha=0.2)
