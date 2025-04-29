@@ -42,14 +42,22 @@ class LC:
                     /len(self.y))/np.sqrt(n))
 
         if plots:
-            plt.figure()
-            plt.plot(nbins, np.array(V_n)*1e6, label='red')
-            plt.plot(nbins, np.array(white)*1e6, label='white')
+            def bin2dt(x):
+                return x*np.diff(self.t).min()*24.
+
+            def dt2bin(x):
+                return x/np.diff(self.t).min()*24.
+
+            fig, ax = plt.subplots()
+            ax.plot(nbins, np.array(V_n)*1e6, label='red')
+            ax.plot(nbins, np.array(white)*1e6, label='white')
+            ax.set_xlabel('Bin size [data points]', fontsize=14)
+            ax.set_ylabel('Noise level [ppm]', fontsize=14)
+            secax = ax.secondary_xaxis('top', functions=(bin2dt, dt2bin))
+            secax.set_xlabel('Time [hours]', fontsize=14)
             plt.legend()
-            plt.xlabel('Data points')
-            plt.ylabel('Noise level [ppm]')
-            plt.show()
-            set_trace()
+            #plt.show()
+            #set_trace()
 
         return np.array(nbins), np.array(V_n), np.array(white)
 
