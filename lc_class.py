@@ -102,7 +102,7 @@ class LC:
         yc = np.copy(self.y - np.median(self.y))
         t2 = (self.t*u.day).to(u.s).value
         freq, power = timeseries.LombScargle(t2, self.y).autopower( \
-                    minimum_frequency=1e-6, maximum_frequency=277e-6)
+                    minimum_frequency=50e-6, maximum_frequency=1500e-6)
         P = 1./freq[power.argmax()]
         if upper_freq is not None:
             # Lowest and highest possible frequencies are set
@@ -121,7 +121,7 @@ class LC:
             yc -= xn
             y_model.append(xn)
             freq, power = timeseries.LombScargle(t2, yc).autopower( \
-                    minimum_frequency=1e-6, maximum_frequency=2000e-6)
+                    minimum_frequency=50e-6, maximum_frequency=2000e-6)
             #freq, power = timeseries.LombScargle(t2, yc).autopower( \
             #        minimum_frequency=3./np.ptp(t2)*1e-6, maximum_frequency=2000e-6)
             flag = np.logical_and(freq*1e6 >= nurange[0], freq*1e6 <= nurange[1])
