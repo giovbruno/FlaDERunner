@@ -158,7 +158,7 @@ def find_flares(lcfile, flatten=True, \
                 filt_kernel_size=filt_kernel_size, validate=False)
 
         yf, yferr, ls_quiet, _, header, tck = flatten_LC( \
-                t, y, yerr, plots=False, mode='prewhitening', \
+                t, y, yerr, plots=False, mode='smooth', \
                 compute_rednoise=False, header=header, savefile='', \
                 flare_ranges=flare_ranges, upper_freq=3.)
 
@@ -549,6 +549,7 @@ def flatten_LC(t, f, ferr, plots=False, mode='smooth', compute_rednoise=True, \
         opt_gp = gp_utilities.set_params(soln.x, gp, x, yerr)
         y_model_int = opt_gp.predict(y, t, return_var=False)
         y_model = opt_gp.predict(y, x, return_var=False)
+        tck = None
         #scatter = var**0.5
 
     # Interpolate smoothing
