@@ -76,6 +76,28 @@ class flare:
 
         return
 
+    def get_flare_t12(self):
+        '''
+        Get flare FWHM extremes and add attribute for FWHM extent (t12).
+        '''
+
+        fmax = self.ydata.argmax()
+        tmax = self.tdata[fmax]
+        diffs = abs(self.ydata - 0.5*self.ydata.max())
+        checkleft = self.tdata < tmax
+        checkright = self.tdata >= tmax
+        if np.sum(checkleft) == 0 or np.sum(checkright) == 0:
+            print('Too close to a data set border')
+            self.npeaks = 0.
+            return
+        x1 = self.tdata[diffs[checkleft].argmin()]
+        bb = np.sum(self.tdata < tmax)
+        x2 = self.tdata[diffs[checkright].argmin() + bb]
+        t12 = x2 - x1
+        self.t12 = t12
+
+        return x1, x2
+
     def fit_flare_profile(self, complexity, threshold, \
             fit_continuum=False, uncertainties='LM', fit_slowdecay=True, \
             plots=False, min_datapoints=3, min_dist=5, plotname='', \
@@ -94,22 +116,9 @@ class flare:
             print('You must first run fit_line to run the AIC tests.')
             return
 
-        fmax = self.ydata.argmax()
-        tmax = self.tdata[fmax]
-        diffs = abs(self.ydata - 0.5*self.ydata.max())
-        checkleft = self.tdata < tmax
-        checkright = self.tdata >= tmax
-        if np.sum(checkleft) == 0 or np.sum(checkright) == 0:
-            print('Too close to a data set border')
-            self.npeaks = 0.
-            return
-        x1 = self.tdata[diffs[checkleft].argmin()]
-        bb = np.sum(self.tdata < tmax)
-        x2 = self.tdata[diffs[checkright].argmin() + bb]
-        t12 = x2 - x1
-        self.t12 = t12
-        tt = self.tdata.value
+        x1, x2 = self.get_flare_t12()
 
+        tt = self.tdata.value
         noiselev = self.noise_level
 
         self.npeaks = 0

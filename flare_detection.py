@@ -47,7 +47,7 @@ def find_flares(lcfile, flatten=True, \
         if np.shape(lcfile)[0] == 3:
             yerr = lcfile[2]
         else:
-            yerr = np.std(y)
+            yerr = np.zeros(len(t)) + np.std(y)
         header = None
     elif type(lcfile) == str and \
                 (lcfile.endswith('.dat') or lcfile.endswith('.txt')):
@@ -177,7 +177,8 @@ def find_flares(lcfile, flatten=True, \
         axs[0].plot(tini, yf, label='Quiet flux model')
         axs[0].plot(tini, yf + flare_threshold*noiselev, '--', \
                     label='Detection threshold')
-        axs[0].set_title('Scatter S/N: {:.1f}'.format(header['scatter_SN']))
+        if header is not None:
+            axs[0].set_title('Scatter S/N: {:.1f}'.format(header['scatter_SN']))
         for pp in peaki:
             axs[0].plot([t[pp], t[pp]], [y[pp] + 5*yerr.max(), \
                     y[pp] + 10*yerr.max()], 'c', linewidth=2)
@@ -203,8 +204,8 @@ def find_flares(lcfile, flatten=True, \
             wth=wth, fth=fth, fit_continuum=fit_continuum,
             complexity=complexity, min_datapoints=min_datapoints, \
             plotname=saveplots.replace('.pdf','_flares.pdf').replace('.fits', \
-                    '_flares.pdf'), filt_kernel_size=filt_kernel_size, \
-            verbose=verbose)
+                    '_flares.pdf').replace('.pic', '_flares.pdf'), \
+            filt_kernel_size=filt_kernel_size, verbose=verbose)
 
     plt.close('all')
     # Add LC info
@@ -470,9 +471,9 @@ def flatten_LC(t, f, ferr, plots=False, mode='smooth', compute_rednoise=True, \
         win = freq[power.argmax()]**-1*24./10./u.day # in hours
         smooth_factor = int(win*60*60./(np.median(np.diff(t))*86400.))
 
-    if 'Prot' in locals():
+    if 'Prot' in locals() and header is not None:
         header['Prot_[days]'] = Prot.to(u.day).value
-    if 'FAP' in locals():
+    if 'FAP' in locals() and header is not None:
         header['FAP'] = FAP
 
     # At most 1% of the points can be removed before smoothing. Start
@@ -560,7 +561,8 @@ def flatten_LC(t, f, ferr, plots=False, mode='smooth', compute_rednoise=True, \
 
     scatter = np.std(y - y_model)
     scatter_sn = scatter/np.median(yerr)
-    header['phot_var'] = np.ptp(y_model)
+    if header is not None:
+        header['phot_var'] = np.ptp(y_model)
 
     if plots:
         plt.plot(t, f, 'b', alpha=0.2)
@@ -587,7 +589,7 @@ def flatten_LC(t, f, ferr, plots=False, mode='smooth', compute_rednoise=True, \
     else:
         bins, red, white = [0., 0., 0.]
 
-    if 'scatter_sn' in locals():
+    if 'scatter_sn' in locals() and header is not None:
         header['scatter_SN'] = scatter_sn
 
     # Get Hurst exponent - this might happen to fail
@@ -595,7 +597,7 @@ def flatten_LC(t, f, ferr, plots=False, mode='smooth', compute_rednoise=True, \
         hurst_exp, cc, val = compute_Hc(y, kind='price')
     except FloatingPointError:
         hurst_exp = -1.
-    if 'hurst_exp' in locals():
+    if 'hurst_exp' in locals() and header is not None:
         header['hurst_exp'] = hurst_exp
 
     # Save smoothed LC for later inspection
