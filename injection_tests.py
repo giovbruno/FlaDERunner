@@ -67,8 +67,8 @@ def generate_LCs(folder_out, plots=False):
     print('Generating', nLC, 'light curves...')
 
     for c, i in enumerate(itertools.product(sigma, Prot, Q0, dQ, noise_range)):
-        if c > 100:
-            continue
+        #if c > 100:
+        #    continue
         print(c)
         sigma_i, Prot_i, Q0_i, dQ_i, noise_i = i
         t, y_quiet = model_LC(sigma_i, Prot_i, Q0_i, dQ_i, noise_i)
@@ -123,10 +123,11 @@ def analyse_LCs(folderin):
     wth, fth = np.loadtxt(throughput_folder + 'TESS_TESS.Red.dat', unpack=True)
 
     LCs = glob.glob(folderin + '*pic')
-    LCs = sorted(LCs)
+    LCs = np.sort(LCs)
     print('Analysing', len(LCs), 'simulated light curves...')
-    for LC_i, LC in enumerate(LCs):
-        print(LC_i)
+    indices = np.random.randint(low=0, high=len(LCs), size=100)
+    for LC_i, LC in enumerate(LCs[indices]):
+        print(LC_i, LC)
         data = pickle.load(open(LC, 'rb'))
         tv = data['t']['values']
         t = np.arange(tv[0], tv[1], tv[2])
@@ -153,6 +154,7 @@ def get_simulation_results(folderin):
 
     fig1, ax1 = plt.subplots()
     fig2, ax2 = plt.subplots()
+    residuals = []
     for LC in LCs:
         data_in = pickle.load(open(LC, 'rb'))
         tpeaks_in = data_in['flare_pars']['values'][0]
@@ -167,14 +169,19 @@ def get_simulation_results(folderin):
         except FileNotFoundError:
             continue
 
-        pairs = find_closest_pair(df['Peak time'], tpeaks_in, 5)
+        flag = np.logical_or(df['Duration [min]'] < 1., df['redchi2'] > 2.)
+        df = df[~flag]
+        pairs = find_closest_pair(df['Peak time'], tpeaks_in, 3)
         index_output = [x[0] for x in pairs]
         index_input = [x[1] for x in pairs]
-
+        set_trace()
         ax1.scatter(ampl_in[index_input], \
             df.iloc[index_output]['Peak amplitude'], marker='.', color='k')
         ax2.scatter(fwhm_in[index_input]*24*60., \
             df.iloc[index_output]['FWHM [min]'], marker='.', color='k')
+
+        residuals.append(abs(1. \
+            - df.iloc[index_output]['Peak amplitude']/ampl_in[index_input]))
 
     xx = np.logspace(-3, -1, 1000)
     ax1.plot(xx, xx, 'r')
