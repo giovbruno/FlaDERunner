@@ -666,7 +666,8 @@ class flare:
             return 0.*tunit
 
     def plot_models(self, plot_instance=None, mode='mendoza', \
-            title='', showplot=False, plot_LS=False, plot_raw_flux=False):
+            title='', showplot=False, plot_LS=False, plot_raw_flux=False, \
+            plot_dip=True, plot_cme=True):
 
         # Generate frames
         left, width = 0.1, 0.85
@@ -699,13 +700,15 @@ class flare:
             tt, thisflare = self.get_single_profile(nsol, double_t=False)
             axflare.plot(tplot, quiet + thisflare)
 
-        model_dip = self.get_full_profile(self.result_dip)
-        axflare.plot(tplot, model_dip, linewidth=3, \
-            label=r'Dip $\Delta$BIC = {:.2f}'.format(self.dip_delta_bic))
+        if plot_dip:
+            model_dip = self.get_full_profile(self.result_dip)
+            axflare.plot(tplot, model_dip, linewidth=3, \
+                label=r'Dip $\Delta$BIC = {:.2f}'.format(self.dip_delta_bic))
 
-        model_cme = self.get_full_profile(self.result_cme)
-        axflare.plot(tplot, model_cme, linewidth=3, \
-            label=r'CME $\Delta$BIC = {:.2f}'.format(self.cme_delta_bic))
+        if plot_cme:
+            model_cme = self.get_full_profile(self.result_cme)
+            axflare.plot(tplot, model_cme, linewidth=3, \
+                label=r'CME $\Delta$BIC = {:.2f}'.format(self.cme_delta_bic))
 
         if self.npeaks == 1:
             label = str(self.npeaks) + ' flare'

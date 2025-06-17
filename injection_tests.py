@@ -126,7 +126,7 @@ def analyse_LCs(folderin):
     LCs = np.sort(LCs)
     print('Analysing', len(LCs), 'simulated light curves...')
     indices = np.random.randint(low=0, high=len(LCs), size=100)
-    for LC_i, LC in enumerate(LCs[indices]):
+    for LC_i, LC in enumerate(LCs[indices][:1]):
         print(LC_i, LC)
         data = pickle.load(open(LC, 'rb'))
         tv = data['t']['values']

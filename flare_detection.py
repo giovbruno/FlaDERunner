@@ -422,7 +422,8 @@ def flare_analysis(t, yflat, yerr, peaki, noise_level, ls_quiet, \
                 aflare.cme_delta_bic = cme_delta_bic
                 aflare.cme_significance = cme_significance
 
-                aflare.plot_models(plot_instance=pplot, showplot=False)
+                aflare.plot_models(plot_instance=pplot, showplot=False, \
+                        plot_dip=False, plot_cme=False)
 
                 flarespar.append(aflare)
 
