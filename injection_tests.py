@@ -124,8 +124,6 @@ def generate_LCs(folder_out, plots=False, observed=[]):
         from astropy.io import fits
 
         for c, lcfile in enumerate(observed):
-            if c > 100:
-                continue
             print(c)
             try:
                 lc = fits.open(lcfile + '.fits')
@@ -183,9 +181,14 @@ def analyse_LCs(folderin, indices=[]):
 
     return
 
-def get_simulation_results(folderout):
+def get_simulation_results(folderout, distance_threshold=3):
     '''
     Work one LCs at a time and plot results for matching flares.
+
+    Parameters
+    ----------
+    distance_threshold: number of data point distance for a flare peak to
+    correspond to a true one.
     '''
     import matplotlib
 
@@ -194,10 +197,15 @@ def get_simulation_results(folderout):
 
     fig1, ax1 = plt.subplots()
     fig2, ax2 = plt.subplots()
-    residuals = []
-    ampl_inj = []
-    ampl_out = []
     yerr = []
+    det = {}
+    det['ampl'] = []
+    det['flag'] = []
+    det['SNR'] = []
+    false_det = {}
+    false_det['ampl'] = []
+    false_det['flag'] = []
+    false_det['SNR'] = []
     for LCi, LC in enumerate(LCs):
         try:
             df = get_results([LC], folderout, \
@@ -211,29 +219,37 @@ def get_simulation_results(folderout):
         tpeaks_in = data_in['flare_pars']['values'][0]
         fwhm_in = data_in['flare_pars']['values'][1]
         ampl_in = data_in['flare_pars']['values'][2]
+        yerr = data_in['stellar_pars']['values'][4]
         flag = df['Duration [min]'] <= 1.
         df = df[~flag]
-        pairs = find_closest_pair(df['Peak time'], tpeaks_in, \
-                3*data_in['t']['values'][2])
-        index_output = [x[0] for x in pairs]
-        index_input = [x[1] for x in pairs]
+        if len(df['Peak time']) == 0:
+            continue
+        # This gives detection rates and missed events
+        pairs, flag_array_i = find_closest_pair(tpeaks_in, \
+            df['Peak time'], distance_threshold*data_in['t']['values'][2])
+        det['ampl'].append(ampl_in)
+        det['SNR'].append(ampl_in/yerr)
+        det['flag'].append(flag_array_i)
+        # This gives false positives (False values in flag array)
+        pairs_false, flag_array_i_false = find_closest_pair(df['Peak time'], \
+            tpeaks_in, 3*data_in['t']['values'][2])
+        false_det['ampl'].append(df['Peak amplitude'])
+        false_det['flag'].append(flag_array_i_false)
+        false_det['SNR'].append(df['Peak amplitude']/yerr)
+
+        index_input = [x[0] for x in pairs]
+        index_output = [x[1] for x in pairs]
 
         if len(pairs) == 0:
             continue
 
-        ampl_inj.append(ampl_in[index_input])
-        ampl_out.append(df.iloc[index_output]['Peak amplitude'])
-        yerr.append(df.iloc[index_output]['Peak SNR'])
         ax1.scatter(ampl_in[index_input], \
             df.iloc[index_output]['Peak amplitude'], \
             marker='.', color='k')
         ax2.scatter(fwhm_in[index_input]*24*60., \
             df.iloc[index_output]['FWHM [min]'], marker='.', color='k')
 
-        residuals.append(abs(1. \
-            - df.iloc[index_output]['Peak amplitude']/ampl_in[index_input]))
-
-    xx = np.logspace(-2.9, -0.2, 1000)
+    xx = np.logspace(-2.9, -0.8, 1000)
     ax1.plot(xx, xx, 'r')
     xx2 = np.logspace(-0.7, 2, 1000)
     ax2.plot(xx2, xx2, 'r')
@@ -242,14 +258,38 @@ def get_simulation_results(folderout):
     ax1.set_ylabel('Retrieved peak amplitude', fontsize=14)
     ax1.set_xscale('log')
     ax1.set_yscale('log')
-    plt.tight_layout()
-    plt.savefig(folderout + 'amplitude.pdf')
+    fig1.tight_layout()
+    fig1.savefig(folderout + 'amplitude.pdf')
     ax2.set_xlabel('Injected FWHM [min]', fontsize=14)
     ax2.set_ylabel('Retrieved FWHM [min]', fontsize=14)
     ax2.set_xscale('log')
     ax2.set_yscale('log')
-    plt.tight_layout()
-    plt.savefig(folder_out + 'fwhm.pdf')
+    fig2.tight_layout()
+    fig2.savefig(folderout + 'fwhm.pdf')
+    plt.close('all')
+
+    # Detection rates
+    det['ampl'] = np.hstack(det['ampl'])
+    det['SNR'] = np.hstack(det['SNR'])
+    det['flag'] = np.hstack(det['flag'])
+    hTh, bin_edges = np.histogram(det['ampl'], bins=20)
+    hRet, _ = np.histogram(det['ampl'][det['flag']], bins=bin_edges)
+    hNDe, _ = np.histogram(det['ampl'][~det['flag']], bins=bin_edges)
+    fig, ax = plt.subplots()
+    bins = bin_edges[:-1] + 0.5*np.diff(bin_edges)
+    ax.plot(bins, hRet/hTh*100., label='True positives')
+    ax.plot(bins, hNDe/hTh*100., label='Missed events')
+    ax.set_xscale('linear')
+    ax.set_xlabel('Peak amplitude', fontsize=14)
+    ax.set_ylabel('Percentage', fontsize=14)
+    # False positives
+    false_det['ampl'] = np.hstack(false_det['ampl'])
+    false_det['flag'] = np.hstack(false_det['flag'])
+    hObs, _ = np.histogram(false_det['ampl'], bins=bin_edges)
+    hFP, _ = np.histogram(false_det['ampl'][~false_det['flag']], bins=bin_edges)
+    ax.plot(bins, hFP/hObs*100., label='False positives')
+    plt.legend()
+    plt.savefig(folderout + 'detection_stats.pdf')
     plt.close('all')
 
     return
@@ -264,16 +304,20 @@ def find_closest_pair(arr1, arr2, tolerance):
 
     arr1 = np.asarray(arr1)
     arr2 = np.asarray(arr2)
+    flag_array = []
 
     pairs = []
-
+    truepos, nondet = [], []
     for arr1_idx, a in enumerate(arr1):
         diffs = np.abs(arr2 - a)
         arr2_min_idx = np.argmin(diffs)
         if diffs[arr2_min_idx] <= tolerance:
-                pairs.append((arr1_idx, arr2_min_idx))
-        # else: no match within tolerance
-    return pairs
+            pairs.append((arr1_idx, arr2_min_idx))
+            flag_array.append(True)
+        else: #no match within tolerance
+            flag_array.append(False)
+
+    return pairs, flag_array
 
 def get_lcs_without_flares(tgs):
     '''
