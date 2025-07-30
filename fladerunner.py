@@ -68,7 +68,8 @@ def get_results(LCsample, result_path, get_lcs_without_flares=False, \
     wth, fth = np.loadtxt(throughput_folder + 'TESS_TESS.Red.dat', unpack=True)
 
     results = {}
-    parameters = ['LCname', 'Peak amplitude', 'Peak luminosity [erg s$^{-1}$]', \
+    parameters = ['LCname', 'Peak amplitude', 'Peak SNR', \
+        'Peak luminosity [erg s$^{-1}$]', \
         'Duration [min]', 'FWHM [min]', 'Energy (Shibayama) [erg]', \
         'Energy (Davenport) [erg]', 'ED [s]', 'Peak time', 'n_event', \
         'total_duration', 'Teff [K]', 'logg', 'radius', \
@@ -91,6 +92,8 @@ def get_results(LCsample, result_path, get_lcs_without_flares=False, \
             # If header is None, a bunch of -999 will be output
         else:
             # Light curve was discarded
+            continue
+        if resLC == [None]:
             continue
 
         if len(resLC) > 1 and get_lcs_without_flares:
@@ -127,6 +130,7 @@ def get_results(LCsample, result_path, get_lcs_without_flares=False, \
                     results['total_duration'].append( \
                             flare.tend - flare.tbeg)
                     results['Peak amplitude'].append(thisflare.max())
+                    results['Peak SNR'].append(thisflare.max()/flare.yerrdata[0])
                     results['FWHM [min]'].append(24.*60* \
                         flare.result_nodip.params_LM['fwhm' + str(n)].value)
                     results['ED [s]'].append(flare.EDs[n].value)
