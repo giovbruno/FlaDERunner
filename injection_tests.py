@@ -16,6 +16,7 @@ import pickle
 from fladerunner import analyse_LC, get_results
 from astropy import units
 import pandas as pd
+import os
 from pdb import set_trace
 
 def model_LC(sigma, Prot, Q0, dQ, noise, f=0.5, tmax=28., deltat=20./86400., \
@@ -63,10 +64,10 @@ def generate_LCs(folder_out, plots=False, observed=[]):
 
     def add_flares(y):
         # Flare parameter grid
-        flares_per_lc = np.random.randint(low=10, high=100)
+        flares_per_lc = np.random.randint(low=5, high=30)
         tpeak = np.random.uniform(low=0., high=28., size=flares_per_lc)
         fwhm = loguniform.rvs(a=20./86400., b=1./24., size=flares_per_lc)
-        ampl = loguniform.rvs(a=1e-4, b=0.1, size=flares_per_lc)
+        ampl = loguniform.rvs(a=1e-4, b=1.0, size=flares_per_lc)
 
         y = np.copy(y_quiet)
         for j in range(flares_per_lc):
@@ -92,7 +93,7 @@ def generate_LCs(folder_out, plots=False, observed=[]):
         LC['flare_pars'] = {}
         LC['flare_pars']['meta'] = ['tpeak', 'fwhm', 'ampl']
         LC['flare_pars']['values'] = flare_pars
-        LC['t'] = t
+        LC['t'] = [t.min(), t.max(), np.diff(t)[0]]
         LC['y'] = y
 
         fout = open(fileout, 'wb')
@@ -103,7 +104,7 @@ def generate_LCs(folder_out, plots=False, observed=[]):
 
     if len(observed) == 0:
         # Stellar parameter grid
-        sigma = np.logspace(-3, -1.3, 10)
+        sigma = np.logspace(-3, -1.3, 4)
         Prot = np.linspace(0.5, 10., 5)
         Q0 = np.linspace(0.1, 1., 3)
         dQ = np.linspace(0.5, 1.5, 3)
@@ -155,7 +156,7 @@ def analyse_LCs(folderin, indices=[]):
 
     plt.ioff()
 
-    saveresfolder = folderin.replace('observed_LCs', 'observed_analysis')
+    saveresfolder = folderin.replace('simulated_LCs', 'simulated_analysis')
 
     datadir = '/home/giovanni/Projects/data'
     throughput_folder = datadir + '/filters/'
@@ -165,19 +166,25 @@ def analyse_LCs(folderin, indices=[]):
     LCs = np.sort(LCs)
     print('Analysing', len(LCs), 'simulated light curves...')
     for LC_i, LC in enumerate(LCs[indices]):
+        fout_str = saveresfolder + LC.split('/')[-1].replace( \
+                        '.pic', '_results.pic')
+        # To start from an uncompleted session
+        if os.path.isfile(fout_str):
+            continue
         print(LC_i, LC)
         data = pickle.load(open(LC, 'rb'))
-        t = data['t']
+        t = np.arange(data['t'][0], data['t'][1] + data['t'][2], data['t'][2])
         y = data['y']
         yerr = np.zeros(len(t)) + data['stellar_pars']['values'][-1]
         saveresfile = saveresfolder + LC.split('/')[-1]
-        fout_str = saveresfile.replace('.pic', '_results.pic')
-        flarespar, flaresflag = analyse_LC([t, y, yerr], saveresfile, \
+        try:
+            flarespar, flaresflag = analyse_LC([t, y, yerr], saveresfile, \
                     wth*units.AA, fth)
-
-        fout = open(fout_str, 'wb')
-        pickle.dump(flarespar, fout)
-        fout.close()
+            fout = open(fout_str, 'wb')
+            pickle.dump(flarespar, fout)
+            fout.close()
+        except TypeError:
+            print('Problematic LC:', LC)
 
     return
 
@@ -226,13 +233,13 @@ def get_simulation_results(folderout, distance_threshold=3):
             continue
         # This gives detection rates and missed events
         pairs, flag_array_i = find_closest_pair(tpeaks_in, \
-            df['Peak time'], distance_threshold*data_in['t']['values'][2])
+                df['Peak time'], distance_threshold*data_in['t'][2])
         det['ampl'].append(ampl_in)
         det['SNR'].append(ampl_in/yerr)
         det['flag'].append(flag_array_i)
         # This gives false positives (False values in flag array)
         pairs_false, flag_array_i_false = find_closest_pair(df['Peak time'], \
-            tpeaks_in, 3*data_in['t']['values'][2])
+            tpeaks_in, 3*data_in['t'][2])
         false_det['ampl'].append(df['Peak amplitude'])
         false_det['flag'].append(flag_array_i_false)
         false_det['SNR'].append(df['Peak amplitude']/yerr)
@@ -249,7 +256,7 @@ def get_simulation_results(folderout, distance_threshold=3):
         ax2.scatter(fwhm_in[index_input]*24*60., \
             df.iloc[index_output]['FWHM [min]'], marker='.', color='k')
 
-    xx = np.logspace(-2.9, -0.8, 1000)
+    xx = np.logspace(-2.9, 0., 1000)
     ax1.plot(xx, xx, 'r')
     xx2 = np.logspace(-0.7, 2, 1000)
     ax2.plot(xx2, xx2, 'r')
@@ -279,7 +286,7 @@ def get_simulation_results(folderout, distance_threshold=3):
     bins = bin_edges[:-1] + 0.5*np.diff(bin_edges)
     ax.plot(bins, hRet/hTh*100., label='True positives')
     ax.plot(bins, hNDe/hTh*100., label='Missed events')
-    ax.set_xscale('linear')
+    ax.set_xscale('log')
     ax.set_xlabel('Peak amplitude', fontsize=14)
     ax.set_ylabel('Percentage', fontsize=14)
     # False positives
