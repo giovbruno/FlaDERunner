@@ -1289,8 +1289,8 @@ class flare:
                 self.EDfast = np.trapz(self.yprof[tfast], x=tt[tfast].to(u.s))
                 self.EDslow = np.trapz(self.yprof[~tfast], x=tt[~tfast].to(u.s))
             ED = np.trapz(self.yprof, x=tt.to(u.s))
-            if 'flare_luminosity' in dir(self):
-                self.flare_energy = ED*self.flare_luminosity
+            if 'stellar_luminosity' in dir(self):
+                self.flare_energy = ED*self.stellar_luminosity
             else:
                 print('You must compute the flare luminosity first.')
                 set_trace()
@@ -1317,6 +1317,27 @@ class flare:
         self.flare_luminosity = L_quiesc*flare_amplitude
 
         return self.flare_luminosity
+
+    def get_stellar_luminosity(self, instrument, mag, distance):
+        '''
+        Use stellar magnitude, distance, and instrument zero point (from SVO
+        service) to convert magnitude to quiescent stellar luminosity.
+        Vega mag is assumed to be 0.
+        '''
+        if instrument == 'CHEOPS': # using Gaia G bandpass
+            zeropoint = 2.49769e-9
+            lambdaeff = 5850.88
+        if instrument == 'TESS':
+            zeropoint = 1.33161e-9
+            lambdaeff = 7452.64
+
+        # Flux densities --> fluxes with effective wavelength
+        F0 = zeropoint*u.erg/u.cm**2/u.s/u.A
+        F = F0*10**(-mag/2.5)*lambdaeff*u.A
+        L_quiesc = 4.*np.pi*distance.to(u.cm)**2*F
+        self.stellar_luminosity = L_quiesc
+
+        return self.stellar_luminosity
 
     def dip_fit_davenport(self, x, y, yerr, complexity, flares_par, tbeg, \
                 correlated_noise_pattern, plots=False, fit_continuum=True):
