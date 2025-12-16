@@ -201,7 +201,7 @@ def get_simulation_results(folderout, distance_threshold=3):
     ampl_in_tot, ampl_out_tot = [], []
     fwhm_in_tot, fwhm_out_tot = [], []
 
-    LCs = glob.glob(folderout + '*pic')
+    LCs = glob.glob(folderout + 'LC*pic')
     LCs = sorted(LCs)
 
     fig1, ax1 = plt.subplots(figsize=(5, 3))
@@ -252,13 +252,6 @@ def get_simulation_results(folderout, distance_threshold=3):
         if len(pairs) == 0:
             continue
 
-        #ax1.scatter(ampl_in[index_input], \
-        #    df.iloc[index_output]['Peak amplitude'], \
-        #    marker='.', color='k')
-
-        #ax2.scatter(fwhm_in[index_input]*24*60., \
-        #    df.iloc[index_output]['FWHM [min]'], marker='.', color='k')
-
         # Save single LC results to inspect later
         ampl_in_tot.append(ampl_in[index_input])
         ampl_out_tot.append(df.iloc[index_output]['Peak amplitude'])
@@ -298,8 +291,8 @@ def get_simulation_results(folderout, distance_threshold=3):
     xx2 = np.logspace(-0.5, 1.85, 1000)
     #ax2.plot(xx2, xx2, 'r')
 
-    ax1.plot(xx, np.polyval(fit_ampl[0], xx), 'r--')
-    ax2.plot(xx2, np.polyval(fit_fwhm[0], xx2), 'r--')
+    ax1.plot(xx, np.polyval(fit_ampl[0], xx), 'r')
+    ax2.plot(xx2, np.polyval(fit_fwhm[0], xx2), 'r')
 
     ax1.set_xlabel('Injected peak amplitude', fontsize=14)
     ax1.set_ylabel('Retrieved peak ampl.', fontsize=14)
