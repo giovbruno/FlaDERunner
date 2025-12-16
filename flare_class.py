@@ -667,7 +667,7 @@ class flare:
 
     def plot_models(self, plot_instance=None, mode='mendoza', \
             title='', showplot=False, plot_LS=False, plot_raw_flux=False, \
-            plot_dip=True, plot_cme=True):
+            plot_dip=True, plot_cme=True, figsize=(13, 5)):
 
         # Generate frames
         left, width = 0.1, 0.85
@@ -681,7 +681,7 @@ class flare:
         else:
             rect_flare = [left, 0.35, width, 0.55]
             rect_resid = [left, 0.15, width, 0.2]
-            fig = plt.figure(figsize=(13, 5))
+            fig = plt.figure(figsize=figsize)
 
         axflare = plt.axes(rect_flare)
         axresid = plt.axes(rect_resid)
@@ -746,7 +746,7 @@ class flare:
             ax_qpp.plot(tplot, self.QPP_candidate['oneflare_resid'], 'k')
             ax_qpp.set_title('Residuals of one-flare model', fontsize=12)
 
-        axflare.legend(loc='upper left', frameon=False, prop={'size': 12})
+        axflare.legend(frameon=False, prop={'size': 12})
 
         if plot_LS:
             axperiodo.set_xlabel('Frequency [mHz]', fontsize=16)

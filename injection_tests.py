@@ -198,12 +198,14 @@ def get_simulation_results(folderout, distance_threshold=3):
     correspond to a true one.
     '''
     import matplotlib
+    ampl_in_tot, ampl_out_tot = [], []
+    fwhm_in_tot, fwhm_out_tot = [], []
 
     LCs = glob.glob(folderout + '*pic')
     LCs = sorted(LCs)
 
-    fig1, ax1 = plt.subplots()
-    fig2, ax2 = plt.subplots()
+    fig1, ax1 = plt.subplots(figsize=(5, 3))
+    fig2, ax2 = plt.subplots(figsize=(5, 3))
     yerr = []
     det = {}
     det['ampl'] = []
@@ -250,23 +252,62 @@ def get_simulation_results(folderout, distance_threshold=3):
         if len(pairs) == 0:
             continue
 
-        ax1.scatter(ampl_in[index_input], \
-            df.iloc[index_output]['Peak amplitude'], \
-            marker='.', color='k')
-        ax2.scatter(fwhm_in[index_input]*24*60., \
-            df.iloc[index_output]['FWHM [min]'], marker='.', color='k')
+        #ax1.scatter(ampl_in[index_input], \
+        #    df.iloc[index_output]['Peak amplitude'], \
+        #    marker='.', color='k')
 
-    xx = np.logspace(-2.9, 0., 1000)
-    ax1.plot(xx, xx, 'r')
-    xx2 = np.logspace(-0.7, 2, 1000)
-    ax2.plot(xx2, xx2, 'r')
+        #ax2.scatter(fwhm_in[index_input]*24*60., \
+        #    df.iloc[index_output]['FWHM [min]'], marker='.', color='k')
+
+        # Save single LC results to inspect later
+        ampl_in_tot.append(ampl_in[index_input])
+        ampl_out_tot.append(df.iloc[index_output]['Peak amplitude'])
+        fwhm_in_tot.append(fwhm_in[index_input]*24*60.)
+        fwhm_out_tot.append(df.iloc[index_output]['FWHM [min]'])
+
+    ampl_in_tot = np.hstack(ampl_in_tot)
+    ampl_out_tot = np.hstack(ampl_out_tot)
+
+    fwhm_in_tot = np.hstack(fwhm_in_tot)
+    fwhm_out_tot = np.hstack(fwhm_out_tot)
+
+    # Remove too little flares that were detected by chance
+    flag = ampl_in_tot > 1e-3
+    ampl_in_tot = ampl_in_tot[flag]
+    ampl_out_tot = ampl_out_tot[flag]
+    fwhm_in_tot = fwhm_in_tot[flag]
+    fwhm_out_tot = fwhm_out_tot[flag]
+
+    ax1.plot(ampl_in_tot, ampl_out_tot, 'k.')
+    ax2.plot(fwhm_in_tot, fwhm_out_tot, 'k.')
+
+    fit_ampl = np.polyfit(ampl_in_tot, ampl_out_tot, 2, \
+            w=(0.1*ampl_out_tot)**-1, full=False, cov=True)
+    fit_fwhm = np.polyfit(fwhm_in_tot, fwhm_out_tot, 2, \
+            w=(0.1*fwhm_out_tot)**-1, full=False, cov=True)
+    print('Fit ampl:', fit_ampl)
+    print('fit_fwhm:', fit_fwhm)
+
+    fout = open(folderout + 'corr_coeff.pic', 'wb')
+    res = {'fit_ampl': fit_ampl, 'fit_fwhm': fit_fwhm}
+    pickle.dump(res, fout)
+    fout.close()
+
+    xx = np.logspace(-2.9, 0.1, 1000)
+    #ax1.plot(xx, xx, 'r')
+    xx2 = np.logspace(-0.5, 1.85, 1000)
+    #ax2.plot(xx2, xx2, 'r')
+
+    ax1.plot(xx, np.polyval(fit_ampl[0], xx), 'r--')
+    ax2.plot(xx2, np.polyval(fit_fwhm[0], xx2), 'r--')
 
     ax1.set_xlabel('Injected peak amplitude', fontsize=14)
-    ax1.set_ylabel('Retrieved peak amplitude', fontsize=14)
+    ax1.set_ylabel('Retrieved peak ampl.', fontsize=14)
     ax1.set_xscale('log')
     ax1.set_yscale('log')
     fig1.tight_layout()
     fig1.savefig(folderout + 'amplitude.pdf')
+
     ax2.set_xlabel('Injected FWHM [min]', fontsize=14)
     ax2.set_ylabel('Retrieved FWHM [min]', fontsize=14)
     ax2.set_xscale('log')
@@ -282,7 +323,7 @@ def get_simulation_results(folderout, distance_threshold=3):
     hTh, bin_edges = np.histogram(det['ampl'], bins=20)
     hRet, _ = np.histogram(det['ampl'][det['flag']], bins=bin_edges)
     hNDe, _ = np.histogram(det['ampl'][~det['flag']], bins=bin_edges)
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(5, 3))
     bins = bin_edges[:-1] + 0.5*np.diff(bin_edges)
     ax.plot(bins, hRet/hTh*100., label='True positives')
     ax.plot(bins, hNDe/hTh*100., label='Missed events')
@@ -296,8 +337,11 @@ def get_simulation_results(folderout, distance_threshold=3):
     hFP, _ = np.histogram(false_det['ampl'][~false_det['flag']], bins=bin_edges)
     ax.plot(bins, hFP/hObs*100., label='False positives')
     plt.legend()
+    plt.tight_layout()
     plt.savefig(folderout + 'detection_stats.pdf')
     plt.close('all')
+
+    set_trace()
 
     return
 
