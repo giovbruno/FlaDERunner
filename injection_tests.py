@@ -229,7 +229,7 @@ def get_simulation_results(folderout, distance_threshold=3):
         fwhm_in = data_in['flare_pars']['values'][1]
         ampl_in = data_in['flare_pars']['values'][2]
         yerr = data_in['stellar_pars']['values'][4]
-        flag = df['Duration [min]'] <= 1.
+        flag = df['Duration [min]'] < 1.
         df = df[~flag]
         if len(df['Peak time']) == 0:
             continue

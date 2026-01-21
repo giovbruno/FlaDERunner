@@ -95,7 +95,7 @@ class flare:
         x2 = self.tdata[diffs[checkright].argmin() + bb]
         t12 = x2 - x1
         self.t12 = t12
-
+    
         return x1, x2
 
     def fit_flare_profile(self, complexity, threshold, \
