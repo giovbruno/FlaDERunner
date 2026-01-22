@@ -197,7 +197,6 @@ def get_simulation_results(folderout, distance_threshold=3):
     distance_threshold: number of data point distance for a flare peak to
     correspond to a true one.
     '''
-    import matplotlib
     ampl_in_tot, ampl_out_tot = [], []
     fwhm_in_tot, fwhm_out_tot = [], []
 
@@ -217,8 +216,7 @@ def get_simulation_results(folderout, distance_threshold=3):
     false_det['SNR'] = []
     for LCi, LC in enumerate(LCs):
         try:
-            df = get_results([LC], folderout, \
-                    get_lcs_without_flares=False, get_csv=False)
+            df = get_results([LC], folderout, get_lcs_without_flares=False)
         except FileNotFoundError:
             continue
 
@@ -271,8 +269,9 @@ def get_simulation_results(folderout, distance_threshold=3):
     fwhm_in_tot = fwhm_in_tot[flag]
     fwhm_out_tot = fwhm_out_tot[flag]
 
-    ax1.plot(ampl_in_tot, ampl_out_tot, 'k.')
-    ax2.plot(fwhm_in_tot, fwhm_out_tot, 'k.')
+    pick = lambda x: np.random.choice(x, size=1000, replace=False)
+    ax1.plot(pick(ampl_in_tot), pick(ampl_out_tot), 'k.')
+    ax2.plot(pick(fwhm_in_tot), pick(fwhm_out_tot), 'k.')
 
     fit_ampl = np.polyfit(ampl_in_tot, ampl_out_tot, 2, \
             w=(0.1*ampl_out_tot)**-1, full=False, cov=True)
