@@ -70,7 +70,7 @@ def analyse_LC(LC, saveresfolder, wth, fth, flare_threshold=4., rebin=0):
 
     return flarespar, flaresflag
 
-def get_results(resfolder, simulate_bootstrap=False, generate_data=False, \
+def get_results(resfolder, generate_data=False, \
                 min_flares=100, sectors=range(27, 88), \
                 only_cheopstargets=False, get_lcs_without_flares=False, \
                 maxT=7000., maxR=1.6, maxProt=10., maxFAP=0.01, maxTmag=11.):
@@ -79,13 +79,10 @@ def get_results(resfolder, simulate_bootstrap=False, generate_data=False, \
     ----------
     min_flares (int): minimum number of flares for a target to be included
     in the analysis.
-
-    simulate_bootstrap (bool): simulate uncertainties for cumulative and
-    single-target PL using bootstrap (relative uncertainty hardcoded)
     '''
 
     # Injection test results
-    file_inj = '/home/giovanni/Projects/flares_TESS_fullsample/injection_tests/simulated_analysis/corr_coeff.pic'
+    file_inj = resfolder + '../injection_tests/simulated_analysis/corr_coeff.pic'
     corr_coeffs = pickle.load(open(file_inj, 'rb'))
     corr_ampl = corr_coeffs['fit_ampl'][0]
     corr_fwhm = corr_coeffs['fit_fwhm'][0]
@@ -485,7 +482,6 @@ def get_results(resfolder, simulate_bootstrap=False, generate_data=False, \
 
     #search_dragonking(dfc, resfolder)
     #search_dragonking(df, resfolder, endname='_distributions_allsingle')
-    return
 
     # Separate results by spectral type
     pars = ['Energy [erg]', 'Peak amplitude', 'Duration [min]', 'FWHM [min]']
@@ -525,8 +521,7 @@ def get_results(resfolder, simulate_bootstrap=False, generate_data=False, \
                 target_dist = {}
             else:
                 target_pars, target_dist = fit_target_distributions(dd, par, \
-                    stellar_pars, targets.keys(), \
-                    simulate_bootstrap=simulate_bootstrap)
+                    stellar_pars, targets.keys())
 
             if di == 0:
                 target_pars_simple = copy.deepcopy(target_pars)
@@ -541,8 +536,8 @@ def get_results(resfolder, simulate_bootstrap=False, generate_data=False, \
         plot_target_results(target_pars_simple, target_pars_complex, \
             target_dist_simple, target_dist_complex, \
             par, sptype, stellar_pars, stpar_labels, min_flares, \
-            resfolder, simulate_bootstrap=simulate_bootstrap, \
-            target_dist3=target_dist_complex2, target_pars3=target_pars_complex2)
+            resfolder, target_dist3=target_dist_complex2, \
+            target_pars3=target_pars_complex2)
 
         plt.close('all')
 
@@ -969,8 +964,7 @@ def fit_general_distribution(df, par, fileoutname, simulate_bootstrap=False):
 
     return
 
-def fit_target_distributions(df, par, stellar_pars, targets, \
-        simulate_bootstrap=False, generate_data=False):
+def fit_target_distributions(df, par, stellar_pars, targets, generate_data=False):
     '''
     Fit power law for all objects with at least min_flares
 
@@ -987,19 +981,18 @@ def fit_target_distributions(df, par, stellar_pars, targets, \
         target_pars[tgp] = []
     for tgp in stellar_pars:
         target_pars[tgp] = []
-
-    if simulate_bootstrap:
-        for tgp in  ['alpha_bootstrap', 'sigma_bootstrap']:
+    if 'Energy' in par:
+        for tgp in ['alpha_bootstrap', 'sigma_bootstrap']:
             target_pars[tgp] = []
 
     truncated_PL_significance_generated = []
     target_distrib = []
-    target_alpha_bootstrap = []
-    target_sigma_bootstrap = []
+    #target_alpha_bootstrap = []
+    #target_sigma_bootstrap = []
     for tgi, tg in enumerate(targets):
         flag_tg = df['ticname'] == tg
         fit_tg = powerlaw.Fit(df[par][flag_tg], verbose=False)
-        x, y = fit_tg.ccdf(original_data=True)
+        x, y = fit_tg.ccdf(original_data=False)
         target_distrib.append([x, y])
 
         # Fit with a truncated power law
@@ -1022,25 +1015,23 @@ def fit_target_distributions(df, par, stellar_pars, targets, \
         if generate_data:
             simulated_data = fit_tg.power_law.generate_random(np.sum(flag_tg))
             fit_th = powerlaw.Fit(simulated_data, verbose=False)
-            Rth, pth = fit_th.distribution_compare('power_law', \
-                'truncated_power_law', normalized_ratio=True)
             deltabic = compare_bic(fit_th, 'power_law', 'truncated_power_law')
             truncated_PL_significance_generated.append([tg, Rth, deltabic, \
                     np.sum(flag_tg)])
-        if simulate_bootstrap:
+
+        # See impact of data uncertainties via bootstrap
+        if 'Energy' in par:
             alphas, sigmas = [], []
             print('Bootstrap for target:', tg, '...')
             for i in range(100):
                 newdata = df[par][flag_tg]*np.random.normal(loc=1., \
                                 scale=0.1, size=np.sum(flag_tg))
-                newdata = newdata[newdata > 0.]
                 fit_th = powerlaw.Fit(newdata, verbose=False)
                 alphas.append(fit_th.alpha)
                 sigmas.append(fit_th.sigma)
-            perc = np.percentile(alphas, [16., 50., 84.])
-            target_pars['alpha_bootstrap'].append(perc[1])
-            target_pars['sigma_bootstrap'].append( \
-                np.mean([perc[1] - perc[0], perc[2] - perc[1]]))
+            #perc = np.percentile(alphas, [16., 50., 84.])
+            target_pars['alpha_bootstrap'].append(np.mean(alphas))
+            target_pars['sigma_bootstrap'].append(np.std(alphas))
 
     if generate_data:
         print('Generated data sets results:')
@@ -1059,8 +1050,7 @@ def fit_target_distributions(df, par, stellar_pars, targets, \
 def plot_target_results(target_pars1, target_pars2, target_dist1, \
             target_dist2, par, sptype, \
             stellar_pars, stpar_labels, min_flares, resfolder, \
-            simulate_bootstrap=False, cheops_targets=False,
-            target_dist3={}, target_pars3={}):
+            cheops_targets=False, target_dist3={}, target_pars3={}):
     '''
     One plot for simple and complex flare cases
     '''
@@ -1086,10 +1076,6 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
     markers = ['o', 's', '^', 'v']
     labels = ['IF', 'SFC', 'CF']
     colors = ['royalblue', 'orange', 'green']
-    if simulate_bootstrap:
-        endname = '_bootstrap'
-    else:
-        endname = ''
 
     fig1, ax1 = plt.subplots()
     fig2, ax2 = plt.subplots()
@@ -1103,19 +1089,23 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
         if target_pars == {} or len(target_pars['alpha']) < 3:
             print('No available targets for individual PL fits')
             continue
+
+        # Sort results by spectral type
+        tlim = [0., 4200., 5300., 5950., 7200.]
+        ddd = pd.DataFrame.from_dict(target_pars)
+        ddd.sort_values('Teff [K]', inplace=True)
+        ddd['Spectral type'] = pd.cut(ddd['Teff [K]'], bins=tlim, labels=sptype)
+        ddd['q'] = np.log10(ddd['maxval']/ddd['minval'])
+
         for sti, stpar in enumerate(stellar_pars):
             # Scatter plots + errorbars: see
             # https://how2matplotlib.com/matplotlib-errorbar-color.html
             if stpar != 'Ro_bonanno':
-                x = target_pars[stpar]
+                x = ddd[stpar]
             else:
-                x = np.log10(target_pars[stpar])
-            if simulate_bootstrap:
-                y = target_pars['alpha_bootstrap']
-                yerr = target_pars['sigma_bootstrap']
-            else:
-                y = target_pars['alpha']
-                yerr = target_pars['sigma']
+                x = np.log10(ddd[stpar])
+            y = ddd['alpha']
+            yerr = ddd['sigma']
 
             # Pearson R
             R, p = stats.spearmanr(x, y)
@@ -1144,66 +1134,47 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
                 plot_end = '_min{}flares'.format(min_flares)
             foutname = resfolder.replace('cluster', 'analysis') \
                    + par.split('[')[0] + '_alpha_vs_' \
-                   + stpar.split('[')[0] + plot_end + endname + '.pdf'
-            fig1.savefig(foutname)
+                   + stpar.split('[')[0] + plot_end + '.pdf'
+
 
             # What is the inertial range related to?
-            target_pars['q'] = np.log10(target_pars['maxval']/target_pars['minval'])
             if stpar != 'Ro_bonanno':
-                x = target_pars[stpar]
+                x = ddd[stpar]
             else:
-                x = np.log10(target_pars[stpar])
-            R, pv = stats.spearmanr(x, target_pars['q'])
+                x = np.log10(ddd[stpar])
+            R, pv = stats.spearmanr(x, ddd['q'])
             print('Spearman corrcoeff between ' + stpar \
                     + ' and inertial range: ' + str(R) + ' ' + str(pv))
 
         newname = foutname.replace(stpar.split('[')[0], 'change')
 
-        # Sort results by spectral type
-        tlim = [0., 4200., 5300., 5950., 7200.]
-        ddd = pd.DataFrame.from_dict(target_pars)
-        ddd.sort_values('Teff [K]', inplace=True)
-        ddd['Spectral type'] = pd.cut(ddd['Teff [K]'], bins=tlim, labels=sptype)
-
         # Number of events
         x = ddd['nobs']
-        if simulate_bootstrap:
-            y = ddd['alpha_bootstrap']
-        else:
-            y = ddd['alpha']
+        y = ddd['alpha']
         R, p = stats.spearmanr(x, y)
         ax2.scatter(x, y, c=colors[tpi], label=labels[tpi] \
                         + ': $p-$value={:.2f}'.format(p))
         ax2.legend()
         ax2.set_xlabel('Number of flares', fontsize=14)
         ax2.set_ylabel(par.split('[')[0] + r' $\alpha$', fontsize=14)
-        fig2.savefig(newname.replace('change', 'nflares'))
 
         # Minimum value of inertial range
         x = ddd['minval']
-        if simulate_bootstrap:
-            y = ddd['alpha_bootstrap']
-        else:
-            y = ddd['alpha']
+        y = ddd['alpha']
         ax3.scatter(x, y, c=colors[tpi], label=labels[tpi])
         ax3.set_xscale('log')
         ax3.legend()
         ax3.set_xlabel(r'$x_\mathrm{min}$', fontsize=14)
         ax3.set_ylabel(r'$\alpha$', fontsize=14)
         fig3.tight_layout()
-        fig3.savefig(newname.replace('change', 'xmin'))
 
         # Inertial range
-        if simulate_bootstrap:
-            y = ddd['alpha_bootstrap']
-            yerr = ddd['sigma_bootstrap']
-        else:
-            y = ddd['alpha']
-            yerr = ddd['sigma']
+        y = ddd['alpha']
+        yerr = ddd['sigma']
         R, pv = stats.spearmanr(ddd['q'], y)
         print('Spearman corrcoeff between alpha and inertial range: ' \
                         + str(R) + ' ' + str(pv))
-        R, pv = stats.spearmanr(ddd['q'], target_pars['nobs'])
+        R, pv = stats.spearmanr(ddd['q'], ddd['nobs'])
         print('Spearman corrcoeff between nobs' + ' and inertial range: ' \
                         + str(R) + ' ' + str(pv))
         #pfit['c'].vary = True
@@ -1233,27 +1204,36 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
         ax4.set_xlabel(r'$q$', fontsize=14)
         ax4.set_ylabel(par.split('[')[0] + r' $\alpha$', fontsize=14)
         fig4.tight_layout()
-        fig4.savefig(newname.replace('change', 'range'))
+
         # Print estimate
         if sti == 0:
             print(labels[tpi], 'Estimate for alpha at max x12: ', \
                         np.polyval(fitpars, ddd['q'].max()))
 
-        if 'alpha_bootstrap' in target_pars.keys() and tpi == 0 \
-                and 'Energy' in par:
+        if 'alpha_bootstrap' in ddd.keys() and 'Energy' in par:
             labx = ['Sample size', '$q$']
+            if tpi == 0:
+                label1 = 'Bootstrapped'
+                label2 = 'Formal uncertainties'
+            else:
+                label1 = ''
+                label2 = ''
             from matplotlib import ticker
             for pi, px in enumerate([ddd['nobs'], ddd['q']]):
-                ax5[pi].errorbar(px, ddd['alpha_bootstrap'], fmt='o', \
-                    yerr=ddd['sigma_bootstrap'], capsize=2, label='Bootstrapped')
-                ax5[pi].errorbar(px, target_pars['alpha'], fmt='o', capsize=2, \
-                    yerr=target_pars['sigma'], label='Formal uncertainty')
+                ax5[pi].errorbar(px, ddd['alpha_bootstrap'], fmt='bo', \
+                    yerr=ddd['sigma_bootstrap'], capsize=2, label=label1)
+                ax5[pi].errorbar(px, ddd['alpha'], fmt='o', color='orange', \
+                    capsize=2, yerr=ddd['sigma'], label=label2)
                 ax5[pi].legend()
                 ax5[pi].set_xlabel(labx[pi], fontsize=14)
                 ax5[pi].set_ylabel(r'$\alpha$', fontsize=14)
-                fig5.savefig(foutname.replace('_alpha_vs_' \
-                    + stpar.split('[')[0], '_alpha_unc_' + labx[pi]))
             ax5[0].xaxis.set_minor_formatter(ticker.ScalarFormatter())
+
+    fig1.savefig(foutname)
+    fig2.savefig(newname.replace('change', 'nflares'))
+    fig3.savefig(newname.replace('change', 'xmin'))
+    fig4.savefig(newname.replace('change', 'range'))
+    fig5.savefig(newname.replace('change', 'bootstrap'))
 
     plt.close('all')
 
@@ -1408,25 +1388,31 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
     (search for DK events)
     '''
 
-    dg = dfc.groupby(['ticname']).size()
+    # For info
+    dfc.sort_values(by='ticname')
+    dg = dfc.groupby(['ticname', 'Spectral type']).size()
     dg = dg[dg >= min_flares]
     print('Targets for DK events search:')
     print(dg)
+
+    dg = dfc.groupby(['ticname']).size()
+    dg = dg[dg >= min_flares]
     for i, tg in enumerate(dg.keys()):
         flag = dfc['ticname'] == tg
         print(tg + ' SpType: ' \
                 + dfc['Spectral type'][flag].drop_duplicates().values[0])
 
         n_complex = dfc[flag].groupby('n_event')
-        fit_nm = powerlaw.Fit(dfc[flag]['Energy [erg]'])
+        fit_nm = powerlaw.Fit(dfc[flag]['Energy [erg]'], verbose=False)
+        label = tg # + ' (' + str(dg[tg]) + ')'
         if i == 0 :
-            fig_nm = fit_nm.plot_ccdf(label=tg + ' (' + str(dg[tg]) + ')', \
-                    original_data=False)
+            fig_nm = fit_nm.plot_ccdf(label=label, original_data=False)
         else:
-            fit_nm.plot_ccdf(ax=fig_nm, label=tg + ' (' + str(dg[tg]) + ')', \
-                    original_data=False)
+            fit_nm.plot_ccdf(ax=fig_nm, label=label, original_data=False)
+        deltabic = compare_bic(fit_nm, 'power_law', 'truncated_power_law')
+        print('Delta BIC PL-truncated PL = {:.2f}'.format(deltabic))
         fit_nm.power_law.plot_ccdf(ax=fig_nm, color='k', linestyle='--', \
-        alpha=0.5)
+                alpha=0.5)
     plt.legend()
     plt.xlabel('Energy [erg]', fontsize=14)
     plt.ylabel('CCDF', fontsize=14)
@@ -1439,13 +1425,16 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
     for i, tg in enumerate(dg.keys()):
         flag = dfc['ticname'] == tg
         n_complex = dfc[flag].groupby('n_event')
-        fit_nm = powerlaw.Fit(dfc[flag]['Energy [erg]'])
-        x, y = fit_nm.ccdf()
+        fit_nm = powerlaw.Fit(dfc[flag]['Energy [erg]'], verbose=False)
+        x, y = fit_nm.ccdf(original_data=False)
         yth = fit_nm.power_law.ccdf()
-        firsthalf = int(len(y)/2)
-        std = np.std(y[:firsthalf] - yth[:firsthalf])
-        arrdiff.append((y[firsthalf:] - yth[firsthalf:])/std)
-        labels.append(tg + ' (' + str(dg[tg]) + ')')
+        firstpart = int(len(y)*0.75)
+        rms = np.std(y[:firstpart] - yth[:firstpart])
+        arrdiff_i = (y[firstpart:] - yth[firstpart:])/rms
+        arrdiff.append(arrdiff_i)
+        if (arrdiff_i >= 3.).any():
+            print('DK events candidate:', tg)
+        labels.append(tg)# + ' (' + str(dg[tg]) + ')')
     plt.hist(arrdiff, label=labels, bins=5)
     plt.legend()
     plt.ylabel('Data points', fontsize=14)
