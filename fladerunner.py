@@ -70,8 +70,134 @@ def analyse_LC(LC, saveresfolder, wth, fth, flare_threshold=4., rebin=0):
 
     return flarespar, flaresflag
 
-def get_results(resfolder, generate_data=False, \
-                min_flares=100, sectors=range(27, 88), \
+def get_results_simulations(LCsample, result_path, get_csv=True):
+    '''
+    To be used for the results of injection-recovery tests: produce a pandas
+    DataFrame with parameter results from a set of result files.
+    '''
+
+    wth, fth = np.loadtxt(throughput_folder + 'TESS_TESS.Red.dat', unpack=True)
+
+    results = {}
+    parameters = ['LCname', 'Peak amplitude', 'Peak SNR', \
+        'Peak luminosity [erg s$^{-1}$]', \
+        'Duration [min]', 'FWHM [min]', 'Energy (Shibayama) [erg]', \
+        'Energy (Davenport) [erg]', 'ED [s]', 'Peak time', 'n_event', \
+        'total_duration', 'Teff [K]', 'logg', 'radius', \
+        'phot_var', 'tessmag', 'Prot', 'FAP', 'redchi2', 'ticname', \
+        'ra', 'dec', 'scatter_SN']
+    for par in parameters:
+        results[par] = []
+
+    for LCi, LCfile in enumerate(LCsample):
+
+        print(LCfile)
+        try:
+            resLC = pickle.load(open(LCfile, 'rb'))
+        except EOFError:
+            # The file is empty
+            continue
+
+        if len(resLC) > 0:
+            header = resLC[-1]
+            # If header is None, a bunch of -999 will be output
+        else:
+            # Light curve was discarded
+            continue
+        if resLC == [None]:
+            continue
+
+        for fi, flare in enumerate(resLC[:-1]):
+            try:
+                for n in np.arange(flare.npeaks):
+                    duration = flare.durations[n].to(units.min).value
+                    if type(duration) == np.ndarray:
+                        results['Duration [min]'].append( \
+                                flare.durations[n].to(units.min).value[3])
+                    else:
+                        # Somehow fit failed
+                        continue
+                    # Identify LC, to later compute flare rates
+                    results['LCname'].append( \
+                            LCfile.split('/')[-1].split('_results.pic')[0])
+                    # Identify flare event number for given LC
+                    results['n_event'].append(fi)
+                    results['redchi2'].append(flare.result_nodip.redchi)
+                    tt, thisflare = flare.get_single_profile(n)
+                    results['Peak time'].append(flare.tref \
+                        + flare.result_nodip.params['tpeak' + str(n)].value)
+                    results['total_duration'].append( \
+                            flare.tend - flare.tbeg)
+                    results['Peak amplitude'].append(thisflare.max())
+                    results['Peak SNR'].append(thisflare.max()/flare.yerrdata[0])
+                    results['FWHM [min]'].append(24.*60* \
+                        flare.result_nodip.params_LM['fwhm' + str(n)].value)
+                    results['ED [s]'].append(flare.EDs[n].value)
+                    try:
+                        flare.Tstar = header['TEFF']*units.K
+                        flare.Rstar = header['RADIUS']*constants.R_sun
+                        flare.Tflare = 9000.*units.K
+                        flare.wth = wth*units.AA
+                        flare.fth = fth
+                        results['Energy (Shibayama) [erg]'].append( \
+                                    flare.energies[n].value)
+                        results['Teff [K]'].append(header['TEFF'])
+                        results['radius'].append(header['RADIUS'])
+                    except TypeError:
+                        results['Energy (Shibayama) [erg]'].append(-999.)
+                        results['Teff [K]'].append(-999.)
+                        results['radius'].append(-999.)
+                        results['phot_var'].append(-999.)
+                    except IndexError:
+                        # This can only happen for the phot_var info
+                        results['phot_var'].append(-999.)
+
+                    # Stellar params
+                    try:
+                        results['logg'].append(header['LOGG'])
+                        results['ra'].append(header['RA_OBJ'])
+                        results['dec'].append(header['DEC_OBJ'])
+                        results['ticname'].append(header['OBJECT'])
+                        results['tessmag'].append(header['TESSMAG'])
+                    except TypeError:
+                        results['logg'].append(-999.)
+                        results['ra'].append(-999.)
+                        results['dec'].append(-999.)
+                        results['ticname'].append(-999.)
+                        results['tessmag'].append(-999.)
+                    results['Energy (Davenport) [erg]'].append(-999.)
+                    results['Peak luminosity [erg s$^{-1}$]'].append(-999.)
+                    try:
+                        results['Prot'].append(header['Prot_[days]'])
+                        results['FAP'].append(header['FAP'])
+                        results['scatter_SN'].append(header['scatter_SN'])
+                    except TypeError:
+                        results['Prot'].append(-999.)
+                        results['FAP'].append(-999.)
+                        results['scatter_SN'].append(-999.)
+                if flare.npeaks > 1:
+                    # See what would happen with a single-flare fit
+                    fcopy = copy.deepcopy(flare)
+                    fcopy.result_nodip.params = copy.deepcopy( \
+                            flare.QPP_candidate['oneflare_model'].params)
+                    fcopy.get_single_duration(0)
+            except AttributeError as ae:
+                errmsg = 'OSError: No SIMPLE card found, this file does ' \
+                        + 'not appear to be a valid FITS file.'
+                if errmsg in str(ae):
+                    continue
+
+    for p in parameters:
+        results[p] = np.array(results[p])
+    df = pd.DataFrame.from_dict(results)
+
+    if get_csv:
+        df.to_csv(result_path + 'results_table.csv', index=False)
+        return
+    else:
+        return df
+
+def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
                 only_cheopstargets=False, get_lcs_without_flares=False, \
                 maxT=7000., maxR=1.6, maxProt=10., maxFAP=0.01, maxTmag=11.):
     '''
@@ -369,7 +495,7 @@ def get_results(resfolder, generate_data=False, \
     keys, values = zip(*params.items())
     df = pd.DataFrame(data=np.transpose(values), columns=keys)
     # Restrict to FGKM stars, with detected rotation period, luminosity class V
-    flagT = filter_df(df, maxT, maxR, maxProt, maxFAP)
+    flagT = filter_df(df, maxT, maxR, maxProt, maxFAP, maxTmag)
     df = df[flagT]
 
     # Add Gaia colours and Ro values
@@ -406,8 +532,6 @@ def get_results(resfolder, generate_data=False, \
     ro_bins = [0., 0.1, 0.5, np.inf]
     df['Ro_bins'] = pd.cut(df['Ro_bonanno'], bins=ro_bins, \
         labels=[r'$Ro \leq 0.1$', r'$0.1 < Ro \leq 0.5$', r'$Ro > 0.5$'])
-    df['waiting_time'] = df.groupby(['ticname', 'LCname'])[ \
-                        'Peak time [BTJD]'].diff()*24.*60.
     tlim = [0., 4200., 5300., 5950., 7200.]
     sptype = ['M', 'K', 'G', 'F']
     df['Spectral type'] = pd.cut(df['Teff [K]'], bins=tlim, labels=sptype)
@@ -450,6 +574,9 @@ def get_results(resfolder, generate_data=False, \
         dd['log_Ro'] = np.log10(dd['Ro_bonanno'])
         dd['log_ED'] = np.log10(dd['ED [s]'])
         dd['log_fwhm'] = np.log10(dd['FWHM [min]'])
+        dd.sort_values('Peak time [BTJD]', inplace=True)
+        dd['waiting_time'] = dd.groupby(['ticname', 'LCname'])[ \
+                            'Peak time [BTJD]'].diff()*24.*60.
 
     nfl = get_non_flaring_stars(resfolder, maxT, maxR, maxTmag, maxProt, maxFAP)
 
@@ -460,29 +587,30 @@ def get_results(resfolder, generate_data=False, \
     #flare_rate_per_target(pd.concat([df, dfc[complex]]), resfolder)
     #energy_rate(df, resfolder)
     #energy_spotarea(df, resfolder)
+    #peaks_vs_ro(dfc, resfolder)
+    #waiting_time_distribution(df, resfolder, 'IF + SFC', lab='Part of complex')
+    #waiting_time_distribution(dfc, resfolder, 'IF + CF', lab='Complex')
 
-    ## Fits with stellar parameters
-    #simple_complex_fit(df[single], df[~single], 'log_radius', 'log_energy', \
-    #        r'$\log (R_\star/R_\odot)$', r'$\log$ Energy [erg]', resfolder, \
-    #        dfc2=dfc[complex])
-    #simple_complex_fit(df[single], df[~single], 'logg', 'log_duration', \
-    #        r'$\log g$', r'$\log$ Duration [min]', resfolder, dfc2=dfc[complex])
-    #simple_complex_fit(df[single], df[~single], 'logg', 'log_impulse', \
-    #        r'$\log g$', r'$\log$ Impulsiveness [min$^{-1}$]', resfolder, \
-    #        dfc2=dfc[complex])
-    #simple_complex_fit(df[single], df[~single], 'log_duration', 'log_amplitude', \
-    #        r'$\log$ Duration [min]', r'$\log$ Amplitude', resfolder, \
-    #        dfc2=dfc[complex])
-    #simple_complex_fit(df[single], df[~single], 'log_energy', 'log_fwhm', \
-    #        r'$\log$ Energy [erg]', r'$\log$ FWHM [min]', resfolder, \
-    #        dfc2=dfc[complex])
+    ### Fits with stellar parameters (all in log quantities)
+    simple_complex_fit(df[single], df[~single], dfc[complex], \
+            'log_radius', 'log_energy', \
+            r'$\log (R_\star/R_\odot)$', r'$\log$ Energy [erg]', resfolder)
+    simple_complex_fit(df[single], df[~single], dfc[complex], \
+            'logg', 'log_duration', \
+            r'$\log g$', r'$\log$ Duration [min]', resfolder)
+    simple_complex_fit(df[single], df[~single], dfc[complex], \
+            'logg', 'log_impulse', \
+            r'$\log g$', r'$\log$ Impulsiveness [min$^{-1}$]', resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #        'log_energy', 'log_fwhm', \
+    #        r'$\log$ Energy [erg]', r'$\log$ FWHM [min]', resfolder)
     #consecutive_flare_stats(df, resfolder)
     #segment_regression(pd.concat([df, dfc[complex]]), 'log_ED', resfolder, \
     #    labelx=r'$\log Ro$', labely=r'$\log$ ED [s]')
 
     #search_dragonking(dfc, resfolder)
     #search_dragonking(df, resfolder, endname='_distributions_allsingle')
-
+    return
     # Separate results by spectral type
     pars = ['Energy [erg]', 'Peak amplitude', 'Duration [min]', 'FWHM [min]']
     stellar_pars = ['Teff [K]', 'Ro_bonanno', 'logg', 'tessmag']
@@ -512,7 +640,10 @@ def get_results(resfolder, generate_data=False, \
                     print(dline, tline2, np.round(tline['Ro_bonanno'].values[0], 2))
             # Now take them all within this constraint
             dff = copy.deepcopy(dd)
-            occurrences = dff.groupby('ticname').size()
+            try:
+                occurrences = dff.groupby('ticname').size()
+            except ValueError:
+                set_trace()
             targets = occurrences[occurrences >= min_flares]
 
             if len(targets) < 1:
@@ -562,60 +693,7 @@ def compare_Ro(df, resfolder):
 
     return
 
-def simulate_pl_unc(fit, ndata, n=300, unc=0.5, folderout=''):
-    '''
-    Get power law estimate from data, bootstrap realizations to estimate
-    uncertainties based on possible parameter error bars.
-
-    Parameters
-    ----------
-    ndata (int): number of observed (and simulated) data points
-    n (int): number of bootstrap iterations
-    unc (float): fractional uncertainty on data points
-
-    Returns
-    -------
-    Derived uncertainty on power law slope
-    '''
-
-    simulated_data = fit.truncated_power_law.generate_random(ndata)
-
-    alphas, sigmas, x0s = [], [], []
-    alphas_truncated, lambdas = [], []
-    for i in range(n):
-        print(i, '\t')
-        newdata = abs(simulated_data*np.random.normal(loc=1., scale=unc, \
-                                                    size=len(simulated_data)))
-        fit_th = powerlaw.Fit(newdata, verbose=False)
-        alphas.append(fit_th.alpha)
-        sigmas.append(fit_th.sigma)
-        x0s.append(fit_th.xmin)
-        R2, p2 = fit_th.distribution_compare('power_law', 'truncated_power_law', \
-            normalized_ratio=True)
-        alphas_truncated.append(fit_th.truncated_power_law.parameter1)
-        lambdas.append(fit_th.truncated_power_law.parameter2)
-
-    fig, axs = plt.subplots(ncols=3, nrows=2, figsize=(20, 10))
-    axs[0][0].hist(alphas)
-    axs[0][1].hist(sigmas)
-    axs[0][2].hist(x0s)
-    axs[1][0].hist(alphas_truncated)
-    axs[1][1].hist(lambdas)
-    axs[0][0].set_xlabel(r'$\alpha$', fontsize=14)
-    axs[0][1].set_xlabel(r'$\sigma$', fontsize=14)
-    axs[0][2].set_xlabel(r'$x_0$', fontsize=14)
-    axs[1][0].set_xlabel(r'$\alpha_t$', fontsize=14)
-    axs[1][1].set_xlabel(r'$\lambda$', fontsize=14)
-    fig.supylabel('Counts', fontsize=14)
-    plt.savefig(folderout + 'uncertainty_simulated_data_' + str(int(unc*100)) \
-                + '_n' + str(n) + '.pdf')
-
-    plt.show()
-    set_trace()
-
-    return
-
-def simulate_pl_size():
+def simulate_pl_size(resfolder):
     '''
     What happens when the data sample is too small?
     '''
@@ -624,9 +702,10 @@ def simulate_pl_size():
 
     fig, ax = plt.subplots()
     for samplesize in [50, 100, 200, 500, 1000, 2000, 5000, 10000]:
+        print('Sample size:', samplesize)
         alpha = []
         sigma = []
-        for iter in range(100):
+        for iter in range(1000):
             simuldata = theo.generate_random(samplesize)
             fit = powerlaw.Fit(simuldata, verbose=False)
             alpha.append(fit.alpha)
@@ -639,7 +718,7 @@ def simulate_pl_size():
     ax.set_xscale('log')
     ax.set_xlabel('Sample size', fontsize=14)
     ax.set_ylabel(r'$\alpha$', fontsize=14)
-    plt.savefig('/home/giovanni/Projects/flares_TESS_fullsample/PL_samle_size.pdf')
+    plt.savefig(resfolder + 'PL_sample_size.pdf')
     plt.close()
 
     return
@@ -716,8 +795,6 @@ def residual_line(par, x, y, yerr):
     Residuals for a linear fit.
     '''
     residuals = (y - np.polyval(par, x))/yerr
-    flag = np.isnan(residuals)
-    residuals[flag] = 1e6
     return residuals
 
 def lin_fit_labels(result, initial_label=''):
@@ -752,11 +829,9 @@ def robust_linear_fit(x, y, uncert=1., sigma_iter=3., niter=10):
     pfit.add('a', vary=True, value=0.)
     pfit.add('b', vary=True, value=0.)
     for n in range(niter):
-        #fit = np.polyfit(x_new, y_new, 1)
         try:
             result = lmfit.minimize(residual_line, pfit, \
                 args=(x_new, y_new, uncert))
-                #args=(x_new, y_new, np.ones(len(x_new))))
         except ValueError:
             if n == 0:
                 set_trace()
@@ -774,12 +849,12 @@ def robust_linear_fit(x, y, uncert=1., sigma_iter=3., niter=10):
 
     return result.params, x_new, y_new
 
-def filter_df(df, Teff, radius, Prot, FAP):#, Tmag):
+def filter_df(df, Teff, radius, Prot, FAP, Tmag):
     '''
     Only works with upper limits by now.
     '''
     return np.logical_and.reduce((df['Teff [K]'] <= Teff, df['radius'] <= radius, \
-                df['Prot'] <= Prot, df['FAP'] <= FAP))#, df['TESSMAG'] <= Tmag))
+                df['Prot'] <= Prot, df['FAP'] <= FAP, df['tessmag'] <= Tmag))
 
 def get_Rsign(R):
     if np.sign(R) > 0:
@@ -787,11 +862,15 @@ def get_Rsign(R):
     else:
         return r'supported'
 
-def bootstrap_fit(x, y, uncert, deg, type='multiplicative', niter=1000, \
-        return_distrib=False):
+def bootstrap_fit(x, y, uncert, deg, niter=1000, return_distrib=False, \
+                log=False):
     '''
     Bootstrap in case of lack of uncertainties by an uncert amount
-    (additional or multiplicative)
+
+    Parameters
+    ----------
+    log: take into account that parameters are provided in log units, so their
+    linear version should be calculated before bootstrapping their scatter.
     '''
     pars = np.zeros((niter, deg + 1))
 
@@ -799,12 +878,13 @@ def bootstrap_fit(x, y, uncert, deg, type='multiplicative', niter=1000, \
     pfit.add('a', vary=True, value=0.)
     pfit.add('b', vary=True, value=0.)
     for n in range(niter):
-        newy = y*np.random.normal(loc=1., scale=uncert, size=len(y))
-        #fit = np.polyfit(x, newy, deg)
+        randomvar = np.random.normal(loc=1., scale=uncert, size=len(y))
+        if log:
+            newy = np.log10((10**y)*randomvar)
+        else:
+            newy = y*randomvar
         result = lmfit.minimize(residual_line, pfit, \
                 args=(x, newy, uncert))
-                #args=(x, y, np.ones(len(x))))
-        #for p in range(deg + 1):
         for p, par in enumerate(result.params.keys()):
             pars[n][p] = result.params[par]
 
@@ -827,144 +907,51 @@ def obs_time_per_target(df, resfolder):
 
     return
 
-def simple_complex_fit(df, dfc, par1, par2, label_par1, label_par2, \
-        resfolder, logx=False, logy=False, deg1=1, deg2=1, dfc2=[], deg3=1):
+def simple_complex_fit(df1, df2, df3, par1, par2, label_par1, label_par2, \
+        resfolder, logx=False, logy=False, deg=1, rel_unc=0.1):
     '''
     Compare fits of flare properties vs stellar pars for simple and complex
-    flares.
+    flares. The dependent variable is assumed to be in log units.
 
-    deg1, deg2 (int): degree for polynomial fit to first and second dataset.
+    deg (int): degree for polynomial fits
+    rel_unc: relative uncertainty on par2
     '''
 
-    if not logx:
-        xx = np.copy(df[par1])
-        xxx = np.copy(dfc[par1])
-        if len(dfc2) > 0:
-            xxxx = np.copy(dfc2[par1])
-    else:
-        xx = np.log10(df[par1])
-        xxx = np.log10(dfc[par1])
-        if len(dfc2) > 0:
-            xxxx = np.log10(dfc2[par1])
-    if not logy:
-        yy = np.copy(df[par2])
-        yyy = np.copy(dfc[par2])
-        if len(dfc2) > 0:
-            yyyy = np.copy(dfc2[par2])
-    else:
-        yy = np.log10(df[par2])
-        yyy = np.log10(dfc[par2])
-        if len(dfc2) > 0:
-            yyyy = np.log10(dfc2[par2])
-
-    xTh = np.linspace(xx.min(), xx.max(), 100)
-    fit_simple, x, y = robust_linear_fit(xx, yy, sigma_iter=3)
-    mean_simple_bs, std_simple_bs = bootstrap_fit(x, y, 0.1, deg1)
-    print(par2, 'vs', par1, ' (simple):', mean_simple_bs, std_simple_bs)
-    # Compute correlation coefficient for the subset without outliers
-    R, p = stats.pearsonr(x, y)
-    print('R, p:', R, p)
-
-    fit_complex, x, y = robust_linear_fit(xxx, yyy, sigma_iter=3)
-    mean_complex_bs, std_complex_bs = bootstrap_fit(x, y, 0.1, deg2)
-    print(par2, 'vs', par1, ' (complex):', mean_complex_bs, std_complex_bs)
-    R, p = stats.pearsonr(x, y)
-    print('R, p:', R, p)
-
-    dftemp = pd.concat([df, dfc])
-    if len(dfc2) > 0:
-        dftemp = pd.concat([dftemp, dfc2])
-        fit_complex2, x, y = robust_linear_fit(xxxx, yyyy, sigma_iter=3)
-        mean_complex_bs2, std_complex_bs2 = bootstrap_fit(x, y, 0.1, deg3)
-        print(par2, 'vs', par1, ' (complex2):', mean_complex_bs2, std_complex_bs2)
-        R, p = stats.spearmanr(x, y)
-        print('R, p:', R, p)
-
-    if logx:
-        dftemp['logx'] = np.log10(dftemp[par1])
-    else:
-        dftemp['logx'] = np.copy(dftemp[par1])
-    if logy:
-        dftemp['logy'] = np.log10(dftemp[par2])
-    else:
-        dftemp['logy'] = np.copy(dftemp[par2])
-
-    sns.jointplot(dftemp, x='logx', y='logy', hue='Flare type', kind='hist', \
+    dftemp = pd.concat([df1, df2, df3])
+    sns.jointplot(dftemp, x=par1, y=par2, hue='Flare type', kind='hist', \
             alpha=0.5, palette='colorblind', \
             marginal_kws=dict(fill=False, element='step'))
 
-    if logy:
-        plt.plot(xTh, 10.**np.polyval(mean_simple_bs, xTh), c='royalblue')
-        plt.plot(xTh, 10.**np.polyval(mean_complex_bs, xTh), c='orange')
-        plt.plot(xTh, 10.**np.polyval(mean_complex_bs2, xTh), c='g')
-        plt.yscale('log')
-    else:
-        plt.plot(xTh, np.polyval(mean_simple_bs, xTh), c='royalblue')#
-        plt.plot(xTh, np.polyval(mean_complex_bs, xTh), c='orange')
-        plt.plot(xTh, np.polyval(mean_complex_bs2, xTh), c='g')
+    labels = ['dataset 1', 'dataset 2', 'dataset 3']
+    for i, dd in enumerate([df1, df2, df3]):
+        x = dd[par1]
+        y = dd[par2]
+        pfit = lmfit.Parameters()
+        pfit.add('a', vary=True, min=-100., max=100.)
+        pfit.add('b', vary=True, min=-100., max=100.)
+        yerr = np.zeros(len(y)) + 0.1/np.log(10)
+        result = lmfit.minimize(residual_line, pfit, args=(x, y, yerr), \
+                    calc_covar=True, nan_policy='omit', method='powell')
+        xTh = np.linspace(x.min(), x.max(), 100)
+        plt.plot(xTh, np.polyval(result.params, xTh))
+        print('\n', par2, 'vs', par1, 'for', labels[i], ':')
+        print(lmfit.fit_report(result))
+
+        # Compute correlation coefficient for the subset without outliers
+        R, p = stats.pearsonr(x, y)
+        print('R, p:', R, p)
 
     plt.xlabel(label_par1, fontsize=14)
     plt.ylabel(label_par2, fontsize=14)
-    plt.xlim(dftemp['logx'].min() - 0.05, dftemp['logx'].max() + 0.05)
-    plt.ylim(dftemp['logy'].min() - 0.05, dftemp['logy'].max() + 0.05)
+    plt.xlim(dftemp[par1].min() - 0.05, dftemp[par1].max() + 0.05)
+    plt.ylim(dftemp[par2].min() - 0.05, dftemp[par2].max() + 0.05)
     plt.tight_layout()
-    plt.show()
     plt.savefig(resfolder + par2.split(' [')[0] + '_vs_' + par1 + '.pdf')
     plt.close()
 
     return
 
-def fit_general_distribution(df, par, fileoutname, simulate_bootstrap=False):
-    '''
-    Consider all stars in a given parameter range (use with caution).
-    '''
-    fit = powerlaw.Fit(df[par], verbose=False)
-
-    Rl, pl = fit.distribution_compare('power_law', \
-            'lognormal', normalized_ratio=True)
-    deltabic_l = compare_bic(fit, 'power_law', 'lognormal')
-    Rt, pt = fit.distribution_compare('power_law', \
-            'truncated_power_law', normalized_ratio=True)
-    deltabic_t = compare_bic(fit, 'power_law', 'truncated_power_law')
-
-    if simulate_bootstrap:
-        simulate_pl_unc(fit, len(df[par]), folderout=resfolder)
-
-    # Plot general PDF
-    fig = fit.plot_pdf(color='k', original_data=False)
-    fit.power_law.plot_pdf(linestyle=':', \
-                label=r'Power law: $\alpha={:.2f} \pm {:.2f}$'.format( \
-                fit.alpha, fit.sigma), ax=fig)
-    R1, p1 = fit.distribution_compare('power_law', 'lognormal', \
-            normalized_ratio=True)
-    text = get_Rsign(Rl) \
-            + r', $\Delta$BIC={:.2f}, \, \mu={:.2f}, \, \sigma={:.2f}$'.format( \
-            deltabic_l, fit.lognormal.parameter1, fit.lognormal.parameter2)
-    fit.lognormal.plot_pdf(linestyle='--', \
-                ax=fig, label='Lognormal: ' + text)
-    R2, p2 = fit.distribution_compare('power_law', 'truncated_power_law', \
-            normalized_ratio=True)
-    text = get_Rsign(Rt) \
-        + r', $\Delta$BIC={:.2f}, \, \alpha={:.2f}, \, \lambda={:.2f}$'.format( \
-        deltabic_t, fit.truncated_power_law.parameter1, \
-        fit.truncated_power_law.parameter2)
-    fit.truncated_power_law.plot_pdf(linestyle='-.', \
-                label='Truncated power law: ' + text, ax=fig)
-
-    R3, p3 = fit.distribution_compare('truncated_power_law', \
-        'lognormal', normalized_ratio=True)
-    text = get_Rsign(R3) + r', $p={:.2f}$'.format(p3)
-    plt.loglog([], [], label='Lognormal vs truncated PL: ' + text, c='w')
-    plt.legend()
-    plt.xlabel(par.replace('_', ' '), fontsize=14)
-    plt.ylabel(r'$N(x)$', fontsize=14)
-    plt.tight_layout()
-    plt.savefig(fileoutname)
-    plt.close()
-
-    return
-
-def fit_target_distributions(df, par, stellar_pars, targets, generate_data=False):
+def fit_target_distributions(df, par, stellar_pars, targets):
     '''
     Fit power law for all objects with at least min_flares
 
@@ -985,10 +972,7 @@ def fit_target_distributions(df, par, stellar_pars, targets, generate_data=False
         for tgp in ['alpha_bootstrap', 'sigma_bootstrap']:
             target_pars[tgp] = []
 
-    truncated_PL_significance_generated = []
     target_distrib = []
-    #target_alpha_bootstrap = []
-    #target_sigma_bootstrap = []
     for tgi, tg in enumerate(targets):
         flag_tg = df['ticname'] == tg
         fit_tg = powerlaw.Fit(df[par][flag_tg], verbose=False)
@@ -1011,33 +995,18 @@ def fit_target_distributions(df, par, stellar_pars, targets, generate_data=False
         for pp in stellar_pars:
             target_pars[pp].append(np.median(df[pp][flag_tg]))
 
-        # Estimate uncertainties for alpha_t and lambda
-        if generate_data:
-            simulated_data = fit_tg.power_law.generate_random(np.sum(flag_tg))
-            fit_th = powerlaw.Fit(simulated_data, verbose=False)
-            deltabic = compare_bic(fit_th, 'power_law', 'truncated_power_law')
-            truncated_PL_significance_generated.append([tg, Rth, deltabic, \
-                    np.sum(flag_tg)])
-
         # See impact of data uncertainties via bootstrap
         if 'Energy' in par:
             alphas, sigmas = [], []
             print('Bootstrap for target:', tg, '...')
-            for i in range(100):
+            for i in range(1000):
                 newdata = df[par][flag_tg]*np.random.normal(loc=1., \
                                 scale=0.1, size=np.sum(flag_tg))
                 fit_th = powerlaw.Fit(newdata, verbose=False)
                 alphas.append(fit_th.alpha)
                 sigmas.append(fit_th.sigma)
-            #perc = np.percentile(alphas, [16., 50., 84.])
             target_pars['alpha_bootstrap'].append(np.mean(alphas))
             target_pars['sigma_bootstrap'].append(np.std(alphas))
-
-    if generate_data:
-        print('Generated data sets results:')
-        print('ticname\tR\tDelta BIC\tN\n')
-        for t in truncated_PL_significance_generated:
-            print(t)
 
     for tgp in target_pars.keys():
         target_pars[tgp] = np.array(target_pars[tgp])
@@ -1081,7 +1050,8 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
     fig2, ax2 = plt.subplots()
     fig3, ax3 = plt.subplots()
     fig4, ax4 = plt.subplots(figsize=(7, 5))
-    fig5, ax5 = plt.subplots(nrows=2, figsize=(6, 10))
+    if 'Energy' in par:
+        fig5, ax5 = plt.subplots()
     for tpi, target_pars in enumerate([target_pars1, target_pars2, target_pars3]):
 
         print('Results for distribution:', labels[tpi])
@@ -1211,7 +1181,7 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
                         np.polyval(fitpars, ddd['q'].max()))
 
         if 'alpha_bootstrap' in ddd.keys() and 'Energy' in par:
-            labx = ['Sample size', '$q$']
+            labx = ['$q$'] #Sample size
             if tpi == 0:
                 label1 = 'Bootstrapped'
                 label2 = 'Formal uncertainties'
@@ -1219,21 +1189,22 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
                 label1 = ''
                 label2 = ''
             from matplotlib import ticker
-            for pi, px in enumerate([ddd['nobs'], ddd['q']]):
-                ax5[pi].errorbar(px, ddd['alpha_bootstrap'], fmt='bo', \
+            for pi, px in enumerate([ddd['q']]):#, ddd['nobs']]):
+                ax5.errorbar(px, ddd['alpha_bootstrap'], fmt='bo', \
                     yerr=ddd['sigma_bootstrap'], capsize=2, label=label1)
-                ax5[pi].errorbar(px, ddd['alpha'], fmt='o', color='orange', \
+                ax5.errorbar(px, ddd['alpha'], fmt='o', color='orange', \
                     capsize=2, yerr=ddd['sigma'], label=label2)
-                ax5[pi].legend()
-                ax5[pi].set_xlabel(labx[pi], fontsize=14)
-                ax5[pi].set_ylabel(r'$\alpha$', fontsize=14)
-            ax5[0].xaxis.set_minor_formatter(ticker.ScalarFormatter())
+                ax5.legend()
+                ax5.set_xlabel(labx[pi], fontsize=14)
+                ax5.set_ylabel(r'$\alpha$', fontsize=14)
+            ax5.xaxis.set_minor_formatter(ticker.ScalarFormatter())
 
     fig1.savefig(foutname)
     fig2.savefig(newname.replace('change', 'nflares'))
     fig3.savefig(newname.replace('change', 'xmin'))
     fig4.savefig(newname.replace('change', 'range'))
-    fig5.savefig(newname.replace('change', 'bootstrap'))
+    if 'Energy' in par:
+        fig5.savefig(newname.replace('change', 'bootstrap'))
 
     plt.close('all')
 
@@ -1357,9 +1328,9 @@ def segment_regression(df, par, resfolder, labelx='', labely=''):
         flag = df['Flare type'] == ft
         x = df[flag]['log_Ro'].tolist()
         y = df[flag][par].tolist()
+        print(par, 'vs', 'log Ro -', ft)
         pw_fit = pr.Fit(x, y, n_breakpoints=1)
         fits.append(pw_fit)
-        print(par, 'vs', 'log Ro -', ft)
         print(pw_fit.summary())
 
     sns.jointplot(df, x='log_Ro', y=par, hue='Flare type', alpha=0.5, \
@@ -1445,65 +1416,53 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
 
     return
 
-def waiting_time_distribution(df, resfolder):
-
-    df.sort_values('Peak time [BTJD]', inplace=True)
+def waiting_time_distribution(df, resfolder, fltypes, lab):
+    '''
+    Parameters
+    ----------
+    fltypes: used to save plot
+    lab: labels to print in legend percentage
+    '''
 
     labc = ['_simple', '_complex', '_twosets']
     ccs = ['b', 'orange', 'g', 'brown']
     mt = ['o', 's', '^', '*']
     energy_bins = np.logspace(31, 38, 8)
-    # Results for AD tests
-    tout = open(resfolder + 'ADtests.txt', 'w')
-    print('AD test results: comparing waiting time observations to ' \
-            'several distributions.', file=tout)
 
     fig_wt, ax_wt = plt.subplots()
+    ymax = -np.inf
     for i, ro_i in enumerate(df['Ro_bins'].unique()):
 
         flag = df['Ro_bins'] == ro_i
-        if np.sum(flag) == 0:
+        if np.sum(flag) < 10:
             continue
-
         distrib = df[flag]['waiting_time'].dropna()
         if len(distrib) < 10:
             print(ro_i, 'Sample size:', len(distrib))
             continue
 
         # How many flares have more than one peak?
-        if di == 1:
-            ncomplex = np.sum(df[flag]['peaks_per_event'] > 1)
-            totflares = np.sum(flag)
-            perc_complex = ncomplex/totflares*100.
-            label = ' ({:.1f}% complex)'.format(perc_complex)
-        else:
-            label=''
+        ncomplex = np.sum(df[flag]['peaks_per_event'] > 1)
+        totflares = np.sum(flag)
+        perc_complex = ncomplex/totflares*100.
+        label = ' ({:.1f}% complex)'.format(perc_complex)
 
         # Try two exponentials
-        if di == 2:
-            low = distrib <= 50.
-            subset_low = distrib[low].tolist()
-            subset_high = distrib[~low].tolist()
-        else:
-            distrib = distrib.tolist()
+        distrib = distrib.tolist()
 
         fit_ew = stats.exponweib.fit(distrib)
-        print(di, ro_i, ', Fit EW:', fit_ew)
+        print(ro_i, ', Fit EW:', fit_ew)
         fit_e = stats.expon.fit(distrib)
-        print(di, ro_i, ', Fit exp:', fit_e)
+        print(ro_i, ', Fit exp:', fit_e)
 
-        plt.figure(1)
-        if i == 0:
-            nbins = 20
-        else:
-            nbins = 10
-        counts, bins, _ = plt.hist(distrib, bins=nbins)
+        figt, axt = plt.subplots()
+        counts, bins, _ = plt.hist(distrib, bins=14, density=True)
         plt.close()
         logbins = np.logspace(np.log10(bins[0]),np.log10(bins[-1]), len(bins))
-        bin_widths = np.diff(logbins)
-
-        ax_wt.hist(distrib, bins=logbins, log=True, density=True, \
+        yy = ax_wt.hist(distrib, bins=logbins, log=True, density=True, \
                     histtype='step', color=ccs[i], label=ro_i + label)
+        if yy[0].max() > ymax:
+            ymax = yy[0].max()
         xth = lambda a, x: stats.exponweib.ppf(a, x[0], x[1], loc=x[2], \
                                           scale=x[3])
         x_ew = np.linspace(xth(0.001, fit_ew), xth(0.999, fit_ew), 300000)
@@ -1517,25 +1476,18 @@ def waiting_time_distribution(df, resfolder):
         ax_wt.plot(x_ew, pdf_ew, '--', color=ccs[i])
         ax_wt.plot(x_e, pdf_e, ':', color=ccs[i])
 
-        ax_wt.set_xscale('log')
-        ax_wt.set_yscale('log')
-        if di == 0:
-            ax_wt.set_ylim(1e-6, 1e-1)
-            ax_wt.set_xlim(1., 10**5.5)
-        else:
-            ax_wt.set_ylim(1e-6, 1e-2)
-
+    ax_wt.set_xscale('log')
+    ax_wt.set_yscale('log')
+    ax_wt.set_ylim(1e-6, ymax*2.5)
+    ax_wt.set_xlim(logbins[0]*0.5, logbins[-1]*1.5)
     ax_wt.plot([], [], 'k--', label='Expon. Weibull')
     ax_wt.plot([], [], 'k:', label='Exponential')
     ax_wt.legend()
     ax_wt.set_xlabel('Waiting time [min]', fontsize=14)
     ax_wt.set_ylabel(r'$P(\Delta t)$', fontsize=14)
     plt.tight_layout()
-    plt.savefig(resfolder + 'waiting_time_distribution' + labc[di] + '.pdf')
+    plt.savefig(resfolder + 'waiting_time_distribution_' + fltypes + '.pdf')
     plt.close('all')
-
-    # Close AD test results file
-    tout.close()
 
     return
 
@@ -1667,8 +1619,8 @@ def energy_spotarea(df, resfolder):
     ax.set_yscale('log')
     ax.set_xlabel(r'Spotted area [$A_\odot$]', fontsize=14)
     ax.set_ylabel('Energy [erg]', fontsize=14)
-    ax.set_ylim(8e27, 1.5e36)
-    ax.set_xlim(6e-6, 0.5)
+    ax.set_ylim(1e28, 2e37)
+    #ax.set_xlim(6e-6, 0.5)
     plt.savefig(resfolder + 'energy_vs_ffactor.pdf')
     plt.close('all')
 
@@ -1740,9 +1692,9 @@ def peaks_vs_ro(df, resfolder):
     # Peaks vs ro bins
     fig, ax = plt.subplots(figsize=(6, 3))
     bins = np.arange(0.5, 6.5)
-    for j, ro_i in enumerate(dfc['Ro_bins'].unique()):
-        flag_ro = dfc['Ro_bins'] == ro_i
-        ax.hist(dfc['peaks_per_event'][flag_ro], bins=bins, \
+    for j, ro_i in enumerate(df['Ro_bins'].unique()):
+        flag_ro = df['Ro_bins'] == ro_i
+        ax.hist(df['peaks_per_event'][flag_ro], bins=bins, \
                     log=True, histtype='step', label=ro_i, density=False, \
                     linewidth=2)
     ax.set_xlabel('Peaks per event', fontsize=14)
@@ -2040,7 +1992,7 @@ def get_non_flaring_stars(resfolder, maxT, maxR, maxTmag, maxProt, maxFAP):
                 inplace=True)
         flagNF = np.logical_and.reduce((nfl['Teff [K]'] < maxT, \
                     nfl['RADIUS'] < maxR, nfl['Prot_[days]'] < maxProt, \
-                    nfl['FAP'] < maxFAP, nfl['TESSMAG'] < maxTmag))
+                    nfl['FAP'] < maxFAP, nfl['TESSMAG'] <= maxTmag))
         nfl = nfl[flagNF]
         nfl.to_csv(resfolder + 'non_flaring_stars.csv', index=False)
     else:

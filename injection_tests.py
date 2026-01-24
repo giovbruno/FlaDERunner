@@ -13,10 +13,11 @@ import itertools
 from models import flare_model_mendoza
 import glob
 import pickle
-from fladerunner import analyse_LC, get_results
+from fladerunner import analyse_LC, get_results_simulations
 from astropy import units
 import pandas as pd
 import os
+import seaborn as sns
 from pdb import set_trace
 
 def model_LC(sigma, Prot, Q0, dQ, noise, f=0.5, tmax=28., deltat=20./86400., \
@@ -216,12 +217,10 @@ def get_simulation_results(folderout, distance_threshold=3):
     false_det['SNR'] = []
     for LCi, LC in enumerate(LCs):
         try:
-            df = get_results([LC], folderout, get_lcs_without_flares=False)
+            df = get_results_simulations([LC], folderout, get_csv=False)
         except FileNotFoundError:
             continue
-
-        LC_in = LC.replace('_analysis', '_LCs').replace('_results.pic', \
-                    '.pic')
+        LC_in = LC.replace('_analysis', '_LCs').replace('_results.pic', '.pic')
         data_in = pickle.load(open(LC_in, 'rb'))
         tpeaks_in = data_in['flare_pars']['values'][0]
         fwhm_in = data_in['flare_pars']['values'][1]
@@ -269,9 +268,13 @@ def get_simulation_results(folderout, distance_threshold=3):
     fwhm_in_tot = fwhm_in_tot[flag]
     fwhm_out_tot = fwhm_out_tot[flag]
 
-    pick = lambda x: np.random.choice(x, size=1000, replace=False)
-    ax1.plot(pick(ampl_in_tot), pick(ampl_out_tot), 'k.')
-    ax2.plot(pick(fwhm_in_tot), pick(fwhm_out_tot), 'k.')
+    rng = np.random.default_rng()
+    arand = rng.choice([ampl_in_tot, ampl_out_tot], size=2000, \
+                                            replace=False, axis=1)
+    ax1.scatter(arand[0], arand[1], color='k', marker='.')
+    frand = rng.choice([fwhm_in_tot, fwhm_out_tot], size=2000, \
+                                            replace=False, axis=1)
+    ax2.scatter(frand[0], frand[1], color='k', marker='.')
 
     fit_ampl = np.polyfit(ampl_in_tot, ampl_out_tot, 2, \
             w=(0.1*ampl_out_tot)**-1, full=False, cov=True)
@@ -333,8 +336,6 @@ def get_simulation_results(folderout, distance_threshold=3):
     plt.savefig(folderout + 'detection_stats.pdf')
     plt.close('all')
 
-    set_trace()
-
     return
 
 def find_closest_pair(arr1, arr2, tolerance):
@@ -361,14 +362,3 @@ def find_closest_pair(arr1, arr2, tolerance):
             flag_array.append(False)
 
     return pairs, flag_array
-
-def get_lcs_without_flares(tgs):
-    '''
-    Input is a file with names of objects without flares detected.
-    '''
-
-    tgs_wo_flares = pickle.load(open(tgs, 'rb'))
-    tgs = ['s00' + str(h['SECTOR']) + '-' + str(h['TICID']) for h in tgs_wo_flares]
-    set_trace()
-
-    return
