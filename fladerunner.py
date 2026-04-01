@@ -323,7 +323,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
                     filename = LCfile.split('/')[-1].split('_results')[0]
                     phvarflag = phditot['lcname'] == filename
                     header['phot_var'] = phditot[phvarflag]['phot_var'].values[0]
-                    header['LCfile'] = LCfile.split('varyD2/')[-1].split('_results')[0]
+                    header['LCfile'] = LCfile.split('/')[-1].split('_results')[0]
                 except IndexError:
                     continue
                 lcs_without_flares.append(header)
@@ -581,6 +581,13 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
         dd.sort_values('Peak time [BTJD]', inplace=True)
         dd['waiting_time'] = dd.groupby(['ticname', 'LCname'])[ \
                             'Peak time [BTJD]'].diff()*24.*60.
+            # Flare rate per target
+
+        dd['flares_per_target'] = dd.groupby(['ticname', 'Flare type']).transform( \
+                                'size').astype('float')
+        dd['time_on_target'] = dd.groupby('ticname')['LCname'].transform( \
+                                'nunique').astype('float')*28.
+        dd['rate_per_target'] = np.log10(dd['flares_per_target']/dd['time_on_target'])
 
     nfl = get_non_flaring_stars(resfolder, maxT, maxR, maxTmag, maxProt, maxFAP)
 
@@ -596,27 +603,28 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #waiting_time_distribution(dfc, resfolder, 'IF + CF', lab='Complex')
     #set_trace()
     ### Fits with stellar parameters (all in log quantities)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-            'log_radius', 'log_energy', \
-            r'$\log (R_\star/R_\odot)$', r'$\log$ Energy [erg]', resfolder)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-            'logg', 'log_duration', \
-            r'$\log g$', r'$\log$ Duration [min]', resfolder)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-            'logg', 'log_impulse', \
-            r'$\log g$', r'$\log$ Impulsiveness [min$^{-1}$]', resfolder)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-            'log_energy', 'log_fwhm', \
-            r'$\log$ Energy [erg]', r'$\log$ FWHM [min]', resfolder)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-            'log_amplitude', 'log_duration', \
-            r'$\log$ Amplitude', r'$\log$ Duration [min]', resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #        'log_radius', 'log_energy', \
+    #        r'$\log (R_\star/R_\odot)$', r'$\log$ Energy [erg]', resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #        'logg', 'log_duration', \
+    #        r'$\log g$', r'$\log$ Duration [min]', resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #        'logg', 'log_impulse', \
+    #        r'$\log g$', r'$\log$ Impulsiveness [min$^{-1}$]', resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #        'log_energy', 'log_fwhm', \
+    #        r'$\log$ Energy [erg]', r'$\log$ FWHM [min]', resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #        'log_amplitude', 'log_duration', \
+    #        r'$\log$ Amplitude', r'$\log$ Duration [min]', resfolder)
     #consecutive_flare_stats(df, resfolder)
     #segment_regression(pd.concat([df, dfc[complex]]), 'log_ED', resfolder, \
     #    labelx=r'$\log Ro$', labely=r'$\log$ ED [s]')
-
-    #search_dragonking(dfc, resfolder)
-    #search_dragonking(df, resfolder, endname='_distributions_allsingle')
+    #segment_regression(pd.concat([df, dfc[complex]]), 'rate_per_target', \
+    #                resfolder, labelx=r'$\log Ro$', labely='Flares (star day)$^{-1}$')
+    search_dragonking(dfc, resfolder)
+    search_dragonking(df, resfolder, endname='_distributions_allsingle')
     return
     # Separate results by spectral type
     pars = ['Energy [erg]', 'Peak amplitude', 'Duration [min]', 'FWHM [min]']
@@ -1392,6 +1400,8 @@ def segment_regression(df, par, resfolder, labelx='', labely=''):
     plt.xlim(df['log_Ro'].min() - 0.05, df['log_Ro'].max() + 0.05)
     plt.ylim(df[par].min() - 0.05, df[par].max() + 0.05)
     plt.tight_layout()
+    plt.show()
+    set_trace()
     plt.savefig(resfolder + par + '_vs_Ro_segmented.pdf')
 
     return
@@ -1404,7 +1414,7 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
     '''
 
     # For info
-    dfc.sort_values(by='ticname')
+    dfc.sort_values(by='ticname', inplace=True)
     dg = dfc.groupby(['ticname', 'Spectral type']).size()
     dg = dg[dg >= min_flares]
     print('Targets for DK events search:')
@@ -1417,7 +1427,6 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
         print(tg + ' SpType: ' \
                 + dfc['Spectral type'][flag].drop_duplicates().values[0])
 
-        n_complex = dfc[flag].groupby('n_event')
         fit_nm = powerlaw.Fit(dfc[flag]['Energy [erg]'], verbose=False)
         label = tg # + ' (' + str(dg[tg]) + ')'
         if i == 0 :
@@ -1437,17 +1446,17 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
 
     pvals = []
     labels = []
+    dfc.sort_values('Energy [erg]', inplace=True)
     for i, tg in enumerate(dg.keys()):
         flag = dfc['ticname'] == tg
-        n_complex = dfc[flag].groupby('n_event')
         fit_nm = powerlaw.Fit(dfc[flag]['Energy [erg]'], verbose=False)
         x, y = fit_nm.ccdf(original_data=False)
         yth = fit_nm.power_law.ccdf()
-        part1 = int(len(y)*0.75)
+        part1 = len(y) - 10#int(len(y)*0.9)
         ydiff = y - yth
-        flag = ydiff[part1:] > 0.
+        #flag = ydiff[part1:] > 0.
         obs_diff, pval = permutation_test_variance_diff(ydiff[:part1], \
-                        ydiff[part1:][flag])
+                        ydiff[part1:])#[flag])
         pvals.append(pval)
         if pval < 0.05:
             print('DK events candidate with p < 0.05:', tg)
@@ -1455,10 +1464,30 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
 
     dfres = pd.DataFrame.from_dict({'pvals':pvals, 'tgs':labels})
     dfres.sort_values(by='pvals', inplace=True)
-    plt.plot(dfres['pvals'], dfres['tgs'], 'ko-', mfc='white')
-    plt.plot([0.05, 0.05], [0, len(labels)], 'r--', label=r'$p=0.05$')
-    plt.legend(loc='upper left')
+    if endname == '_distributions_single+complex':
+        label=''
+    else:
+        label = 'IF + SFC'
+    plt.plot(dfres['pvals'], dfres['tgs'], 'ko', mfc='white', \
+                label=label)
     plt.xlabel('Permutation test $p$-value', fontsize=14)
+
+    # Save results for later use, or use them
+    fout = resfolder + 'distributions_single+complex.csv'
+    if endname == '_distributions_single+complex':
+        dfres.to_csv(fout, index=False)
+    else:
+        dfcomp = pd.read_csv(fout)
+        plt.plot(dfcomp['pvals'], dfcomp['tgs'], 'kx', label='IF + CF')
+        dfres.rename(columns={'pvals':'pvals_IFCF'}, inplace=True)
+        dfcomp.rename(columns={'pvals':'pvals_IFSFC'}, inplace=True)
+        dftot = pd.merge(dfres, dfcomp, on='tgs', how='outer').dropna()
+        for i, t in enumerate(dftot['tgs']):
+            flag = dftot['tgs'] == t
+            plt.plot([dftot['pvals_IFCF'][flag], dftot['pvals_IFSFC'][flag]], \
+                        [t, t], 'k')
+    plt.plot([0.05, 0.05], [0, len(labels)], 'r--', label=r'$p=0.05$')
+    plt.legend(loc='lower right')
     plt.tight_layout()
     plt.savefig(resfolder + par + endname + '_diff.pdf')
     plt.close()
@@ -1472,15 +1501,21 @@ def permutation_test_variance_diff(part1, part2, n_perm=10000):
     rng = np.random.default_rng()
     combined = np.concatenate([part1, part2])
     n1 = len(part1)
-    observed_diff = np.var(part2, ddof=1)/np.var(part1, ddof=1)
+    flag = part2 > 0.
+    observed_diff = np.mean(part2[flag])/np.std(part1, ddof=1)
     count = 0
 
     for _ in range(n_perm):
         rng.shuffle(combined)
         perm_part1 = combined[:n1]
         perm_part2 = combined[n1:]
-        perm_diff = np.var(perm_part2, ddof=1)/np.var(perm_part1, ddof=1)
-        if abs(perm_diff) >= abs(observed_diff):
+        flag = perm_part2 > 0.
+        try:
+            perm_diff = np.mean(perm_part2[flag])/np.std(perm_part1, ddof=1)
+        except ValueError:
+            # no values > 0 in part 2
+            continue
+        if perm_diff >= observed_diff:
             count += 1
 
     p_value = count / n_perm
@@ -1758,11 +1793,14 @@ def peaks_vs_ro(df, resfolder):
     # Peaks vs ro bins
     fig, ax = plt.subplots(figsize=(6, 3))
     bins = np.arange(0.5, 6.5)
+    histos = []
     for j, ro_i in enumerate(df['Ro_bins'].unique()):
         flag_ro = df['Ro_bins'] == ro_i
         ax.hist(df['peaks_per_event'][flag_ro], bins=bins, \
-                    log=True, histtype='step', label=ro_i, density=False, \
+                    log=True, histtype='step', label=ro_i, density=True, \
                     linewidth=2)
+        histos.append(np.histogram(df['peaks_per_event'][flag_ro], bins=bins, \
+                        density=True))
     ax.set_xlabel('Peaks per event', fontsize=14)
     ax.set_ylabel('Events', fontsize=14)
     ax.legend()
@@ -1772,19 +1810,18 @@ def peaks_vs_ro(df, resfolder):
 
     return
 
-def get_df_from_params(params):
-    '''
-    Convert params dict in a dataframe.
-    '''
-
 def consecutive_flare_stats(df, resfolder):
 
     df.sort_values('Peak time [BTJD]', inplace=True)
+    df.reset_index(inplace=True, drop=True)
+    dfc = df[df['Flare type'] == 'SFC']
+    dfc['order'] = dfc.groupby(['LCname', 'n_event']).cumcount()
 
-    df['order'] = pd.NA
-    for lc in df['LCname'].unique():
-        flag = df['LCname'] == lc
-        df.loc[flag, 'order'] = df[flag].groupby('n_event').cumcount()
+    # Create a subset for only consecutive isolated flares
+    dfi = df[df['Flare type'] == 'IF']
+    dfi['seq'] = dfi.groupby('LCname')['n_event'].diff()
+    dfi = dfi[dfi['seq'] == 1]
+    dfi.reset_index(inplace=True, drop=True)
 
     fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(12, 8))
     ax = ax.flatten()
@@ -1794,17 +1831,23 @@ def consecutive_flare_stats(df, resfolder):
     # Distributions to compare
     distribs = {}
     for m, par in enumerate(pars):
-        df['normalized_' + par] \
-            = df.groupby(['LCname', 'n_event'])[par].shift(1) / df[par]
-        #df['normalized_' + par] = df['normalized_' + par].fillna(1.0)
+        # Start with consecutive isolated flares
+        dfi['normalized_' + par] \
+            = dfi.groupby(['LCname'])[par].shift(1) / dfi[par]
+        ax[m].hist(dfi['normalized_' + par], log=True, histtype='step', \
+                    label='Consecutive single-peak', \
+                    density=True, cumulative=-1, bins=logbins)
+
+        dfc['normalized_' + par] \
+            = dfc.groupby(['LCname', 'n_event'])[par].shift(1) / df[par]
         for order in range(1, 5):
-            flag = df['order'] == order
-            ax[m].hist(df['normalized_' + par][flag], log=True, histtype='step', \
+            flag = dfc['order'] == order
+            ax[m].hist(dfc['normalized_' + par][flag], log=True, histtype='step', \
                     label='Peak no. {} to {}'.format(order + 1, order), \
                     density=True, cumulative=-1, bins=logbins)
         ax[m].set_xscale('log')
         ax[m].set_xlabel(par.split('[')[0] + 'ratio', fontsize=14)
-        ax[m].legend()
+        ax[m].legend(loc='lower left')
     fig.supylabel('CCDF', fontsize=14)
     plt.tight_layout()
     plt.savefig(resfolder + 'consecutive_flare_stats.pdf')
@@ -1812,29 +1855,71 @@ def consecutive_flare_stats(df, resfolder):
 
     for par in pars:
         print('\n', par)
-        for order in range(1, df['order'].max() + 1):
-            flagm = df['order'] == order - 1
-            flag = df['order'] == order
-            pval = stats.ks_2samp(df[par][flagm].dropna(), \
-            df[par][flag].dropna()).pvalue
-            print(str(order), 'vs ', str(order - 1), ': ', pval)
+        for order in range(1, dfc['order'].max() + 1):
+            flagm = dfc['order'] == order - 1
+            flag = dfc['order'] == order
+            if order == 1:
+                # Compare first vs second in complex with consecutive isolated
+                pval = stats.ks_2samp(dfc[par][flagm].dropna(), \
+                            dfi[par].dropna()).pvalue
+                print(str(order - 1), 'vs consecutive isolated:', pval)
+            pval = stats.ks_2samp(dfc[par][flagm].dropna(), \
+            dfc[par][flag].dropna()).pvalue
+            print(str(order), 'vs', str(order - 1), ': ', pval)
 
-    df['Energy_consecutive [erg]'] = df.groupby(['LCname', \
+    dfc['Energy_consecutive [erg]'] = dfc.groupby(['LCname', \
             'n_event'])['Energy [erg]'].shift(1).astype(float)
-    ok = ~np.isnan(df['Energy_consecutive [erg]'])
-    pr = stats.pearsonr(df['Energy [erg]'][ok], \
-                    df['Energy_consecutive [erg]'][ok])
-    plt.loglog(df['Energy [erg]'], df['Energy_consecutive [erg]'], 'k.', \
-                label=r'$r=${:.2f}'.format(pr[0]))
+    dfi['Energy_consecutive [erg]'] = dfi.groupby('LCname')[ \
+                    'Energy [erg]'].shift(1).astype(float)
+    alphas = [0.3, 1.]
+    markers = ['o', '.']
+    oks = []
+    prs = []
+    for i, dd in enumerate([dfi, dfc]):
+        ok = ~np.isnan(dd['Energy_consecutive [erg]'])
+        oks.append(ok)
+        pr = stats.pearsonr(dd['Energy [erg]'][ok], \
+                    dd['Energy_consecutive [erg]'][ok])
+        plt.loglog(dd['Energy [erg]'], dd['Energy_consecutive [erg]'], \
+            'k' + markers[i], label=r'$r=${:.2f}'.format(pr[0]), alpha=alphas[i])
+        prs.append(pr[0])
     xx = np.logspace(31, 37, 1000)
     plt.loglog(xx, xx, 'r')
     plt.xlabel('Energy [erg]', fontsize=14)
     plt.ylabel('Consecutive flare energy [erg]', fontsize=14)
     plt.legend()
     plt.tight_layout()
-    plt.savefig(resfolder + 'consecutive_flare_energy.pdf')
-    plt.close()
 
+
+    # Do the two pair distributions come from the same one?
+    # Compare distance of Pearson correlation coeffcients
+    T_obs = abs(prs[0] - prs[1])
+    combined = pd.concat([dfi[['Energy [erg]', 'Energy_consecutive [erg]']][oks[0]], \
+        dfc[['Energy [erg]', 'Energy_consecutive [erg]']][oks[1]]]).reset_index(drop=True)
+    combined = np.array(combined)
+
+    rng = np.random.default_rng()
+    count = 0
+    n_permutations = 1000
+    for _ in range(n_permutations):
+        perm_indices = rng.permutation(len(combined))
+        # Split permuted data into two groups
+        perm_sample1 = combined[perm_indices[:len(dfi)]]
+        perm_sample2 = combined[perm_indices[len(dfi):]]
+
+        # Calculate correlation difference in permuted samples
+        r1, _ = stats.pearsonr(perm_sample1[:, 0], perm_sample1[:, 1])
+        r2, _ = stats.pearsonr(perm_sample2[:, 0], perm_sample2[:, 1])
+        T_perm = abs(r1 - r2)
+
+        if T_perm >= T_obs:
+            count += 1
+    p_value = count / n_permutations
+    print(f"Observed correlation difference: {T_obs:.4f}")
+    print(f"p-value from permutation test: {p_value:.4f}")
+
+    plt.show()
+    set_trace()
     return
 
 def flare_rate_per_target(df, resfolder):
@@ -1842,14 +1927,7 @@ def flare_rate_per_target(df, resfolder):
     It makes more sense to divide isolated from multi-peak flares here, right?
     '''
 
-    df.sort_values(by='Flare type')
-
-    # Flare rate per target
-    df['flares_per_target'] = df.groupby(['ticname', 'Flare type']).transform( \
-                                'size').astype('float')
-    df['time_on_target'] = df.groupby('ticname')['LCname'].transform( \
-                                'nunique').astype('float')*28.
-    df['rate_per_target'] = np.log10(df['flares_per_target']/df['time_on_target'])
+    df.sort_values(by='Flare type', inplace=True)
 
     flag = ~np.isnan(df['rate_per_target'])
     # This works both for simple and complex flares
@@ -1880,7 +1958,7 @@ def flare_rate_per_target(df, resfolder):
     plt.savefig(resfolder + 'flare_rate_per_target.pdf')
     plt.close()
 
-    return
+    return df
 
 def duration_vs_energy_vs_logg(dd, resfolder, label='', plot_fit=True):
     '''

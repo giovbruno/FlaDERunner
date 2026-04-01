@@ -442,13 +442,13 @@ def flare_analysis(t, yflat, yerr, peaki, noise_level, ls_quiet, \
     return flare_ranges, flarespar
 
 def flatten_LC(t, f, ferr, plots=False, mode='smooth', compute_rednoise=True, \
-            savefile='', header=None, flare_ranges=[], upper_freq=None):
+            savefile='', header=None, flare_ranges=[], upper_freq=None, \
+            window_h=10.):
     '''
     Find a smoothed verision of the LC, removing flares through iterative
     sigma-clipping
 
-    Timewindow: use the number of data points to compute a time window (hours)
-    or use it as it is.
+    window_h: duration of the time window for smoothing, in hours.
     '''
 
     print('Flattening light curve...')
@@ -469,7 +469,7 @@ def flatten_LC(t, f, ferr, plots=False, mode='smooth', compute_rednoise=True, \
             FAP = ls.false_alarm_probability(power.max()).value
         except FloatingPointError:
             FAP = -1.
-        win = freq[power.argmax()]**-1*24./10./u.day # in hours
+        win = freq[power.argmax()]**-1*24./window_h/u.day # in hours
         smooth_factor = int(win*60*60./(np.median(np.diff(t))*86400.))
 
     if 'Prot' in locals() and header is not None:
