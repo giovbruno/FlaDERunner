@@ -1305,29 +1305,51 @@ def compute_tau_conv_bonanno(bp_rp_0, teff, logg, feh):
                 + alpha4*np.log(teff)
     return np.exp(ln_tau)
 
+
+#def bic_distribution(fitd, distribution_type):
+#    '''
+#    Computes the Bayesian Information Criterion for a distribution fitted with
+#    powerlaw.
+#    '''
+#    lkf = powerlaw.likelihood_function_generator(distribution_type, False, \
+#                    xmin=fitd.xmin, xmax=fitd.xmax)
+#    set_trace()
+#    if distribution_type == 'power_law':
+#        lk = lkf([fitd.power_law.alpha], fitd.data)
+#        npars = 1
+#    elif distribution_type == 'exponential':
+#        lk = lkf([fitd.exponential.alpha], fitd.data)
+#        npars = 1
+#    elif distribution_type == 'lognormal':
+#        lk = lkf([fitd.lognormal.parameter1, fitd.lognormal.parameter2], \
+#            fitd.data)
+#        npars = 2
+#    elif distribution_type == 'truncated_power_law':
+#        lk = lkf([fitd.truncated_power_law.parameter1, \
+#            fitd.truncated_power_law.parameter2], fitd.data)
+#        npars = 2
+#
+#   bic = npars*np.log(len(fitd.data)) - 2.*np.sum(np.log(lk))
+#   return bic
+
 def bic_distribution(fitd, distribution_type):
     '''
-    Computes the Bayesian Information Criterion for a distribution fitted with
-    powerlaw.
+    Following the logL definition in appendix B of Clauset et al. (2009).
     '''
-    lkf = powerlaw.likelihood_function_generator(distribution_type, False, \
-                    xmin=fitd.xmin, xmax=fitd.xmax)
+    x = fitd.data
+    n = len(x)
+    xmin = fitd.xmin
+
     if distribution_type == 'power_law':
-        lk = lkf([fitd.power_law.alpha], fitd.data)
+        alpha = fitd.power_law.alpha
         npars = 1
-    elif distribution_type == 'exponential':
-        lk = lkf([fitd.exponential.alpha], fitd.data)
-        npars = 1
-    elif distribution_type == 'lognormal':
-        lk = lkf([fitd.lognormal.parameter1, fitd.lognormal.parameter2], \
-            fitd.data)
-        npars = 2
     elif distribution_type == 'truncated_power_law':
-        lk = lkf([fitd.truncated_power_law.parameter1, \
-            fitd.truncated_power_law.parameter2], fitd.data)
+        alpha = fitd.truncated_power_law.parameter1
         npars = 2
 
-    bic = npars*np.log(len(fitd.data)) - 2.*np.sum(np.log(lk))
+    logL = n*np.log(alpha - 1.) - n*np.log(xmin) - alpha*np.sum(np.log(x/xmin))
+    bic = npars*np.log(n) - 2.*logL
+
     return bic
 
 def compare_bic(distribution, dist1_type, dist2_type):
@@ -1336,7 +1358,6 @@ def compare_bic(distribution, dist1_type, dist2_type):
     '''
     bic1 = bic_distribution(distribution, dist1_type)
     bic2 = bic_distribution(distribution, dist2_type)
-
     return bic1 - bic2
 
 def compare_distributions(dist_fit):
@@ -1423,6 +1444,7 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
     dg = dfc.groupby(['ticname']).size()
     dg = dg[dg >= min_flares]
     for i, tg in enumerate(dg.keys()):
+
         flag = dfc['ticname'] == tg
         print(tg + ' SpType: ' \
                 + dfc['Spectral type'][flag].drop_duplicates().values[0])
@@ -1430,12 +1452,12 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
         fit_nm = powerlaw.Fit(dfc[flag]['Energy [erg]'], verbose=False)
         label = tg # + ' (' + str(dg[tg]) + ')'
         if i == 0 :
-            fig_nm = fit_nm.plot_ccdf(label=label, original_data=False)
+            fig_nm = fit_nm.plot_pdf(label=label, original_data=False)
         else:
-            fit_nm.plot_ccdf(ax=fig_nm, label=label, original_data=False)
+            fit_nm.plot_pdf(ax=fig_nm, label=label, original_data=False)
         deltabic = compare_bic(fit_nm, 'power_law', 'truncated_power_law')
         print('Delta BIC PL-truncated PL = {:.2f}'.format(deltabic))
-        fit_nm.power_law.plot_ccdf(ax=fig_nm, color='k', linestyle='--', \
+        fit_nm.truncated_power_law.plot_pdf(ax=fig_nm, color='k', linestyle='--', \
                 alpha=0.5)
     plt.legend()
     plt.xlabel('Energy [erg]', fontsize=14)
@@ -1486,8 +1508,8 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
             flag = dftot['tgs'] == t
             plt.plot([dftot['pvals_IFCF'][flag], dftot['pvals_IFSFC'][flag]], \
                         [t, t], 'k')
-    plt.plot([0.05, 0.05], [0, len(labels)], 'r--', label=r'$p=0.05$')
-    plt.legend(loc='lower right')
+    #plt.plot([0.05, 0.05], [0, len(labels)], 'r--', label=r'$p=0.05$')
+    plt.legend()#loc='lower right')
     plt.tight_layout()
     plt.savefig(resfolder + par + endname + '_diff.pdf')
     plt.close()
@@ -1502,7 +1524,7 @@ def permutation_test_variance_diff(part1, part2, n_perm=10000):
     combined = np.concatenate([part1, part2])
     n1 = len(part1)
     flag = part2 > 0.
-    observed_diff = np.mean(part2[flag])/np.std(part1, ddof=1)
+    observed_diff = np.mean(part2)/np.std(part1, ddof=1)
     count = 0
 
     for _ in range(n_perm):
