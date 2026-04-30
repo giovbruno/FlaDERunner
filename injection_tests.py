@@ -340,7 +340,7 @@ def get_simulation_results(folderout, distance_threshold=3):
 
 def find_closest_pair(arr1, arr2, tolerance):
     '''
-    Return indices of arr1 and arr2 that are closer than tolerance data ponints.
+    Return indices of arr1 and arr2 that are closer than tolerance data points.
     Only the closest pairs are provided.
     '''
     if type(arr2) == np.float64:
