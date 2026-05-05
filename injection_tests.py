@@ -237,6 +237,8 @@ def get_simulation_results(folderout, distance_threshold=3):
         det['SNR'].append(ampl_in/yerr)
         det['flag'].append(flag_array_i)
         # This gives false positives (False values in flag array)
+        # All flares that are not within 3*delta t of an injected peak are
+        # classified as FP
         pairs_false, flag_array_i_false = find_closest_pair(df['Peak time'], \
             tpeaks_in, 3*data_in['t'][2])
         false_det['ampl'].append(df['Peak amplitude'])
@@ -293,8 +295,10 @@ def get_simulation_results(folderout, distance_threshold=3):
     xx2 = np.logspace(-0.5, 1.85, 1000)
     #ax2.plot(xx2, xx2, 'r')
 
-    ax1.plot(xx, np.polyval(fit_ampl[0], xx), 'r')
-    ax2.plot(xx2, np.polyval(fit_fwhm[0], xx2), 'r')
+    ax1.plot(xx, np.polyval(fit_ampl[0], xx), 'r', label='Fit')
+    ax1.plot(xx, xx, 'r--', label='1:1')
+    ax2.plot(xx2, np.polyval(fit_fwhm[0], xx2), 'r', label='Fit')
+    ax2.plot(xx, xx, 'r--', label='1:1')
 
     ax1.set_xlabel('Injected peak amplitude', fontsize=14)
     ax1.set_ylabel('Retrieved peak ampl.', fontsize=14)

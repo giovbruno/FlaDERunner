@@ -531,7 +531,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     # Cranmer & Saar (2001) (done by Stelzer+2016) - see caveats
     df['tau_conv_cranmer'] = compute_tau_conv_cranmer(df['Teff [K]'])
     df['Ro_cranmer'] = df['Prot']/df['tau_conv_cranmer']
-    df['Impulsiveness [min$^{-1}$]'] = df['Peak luminosity [erg s$^{-1}$]']/df['FWHM [min]']
+    df['Impulsiveness [min$^{-1}$]'] = df['Peak amplitude']/df['FWHM [min]']
     #df['Impulsiveness [min$^{-1}$]'] = df['Peak amplitude']/df['FWHM [min]']
     tlim = [0., 4200., 5300., 5950., 7200.]
     sptype = ['M', 'K', 'G', 'F']
@@ -610,9 +610,11 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
 
     ### Trends
     #Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder)
+
     #compare_Ro(df, resfolder)
     #flaring_vs_nonflaring_stars(df, nfl, resfolder)
     #flare_rate_per_target(pd.concat([df, dfc[complex]]), resfolder)
+
     #energy_rate(df, resfolder)
     #energy_spotarea(df, resfolder)
 
@@ -620,18 +622,18 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
 
     # Waiting time distribution and relative differences (first, between counts in
     # data, then between data and model)
-    #saveres_sym = waiting_time_distribution(df, resfolder, 'IF + SFC', \
-    #                lab='Part of complex', pdf=False)
-    #saveres_compl = waiting_time_distribution(dfc, resfolder, 'IF + CF', \
-    #                 lab='Complex', set_logbins=saveres_sym, pdf=False)
-    #wt_diff(saveres_sym, saveres_compl, 'count_diff', resfolder)
+    saveres_sym = waiting_time_distribution(df, resfolder, 'IF + SFC', \
+                    lab='Part of complex', pdf=False)
+    saveres_compl = waiting_time_distribution(dfc, resfolder, 'IF + CF', \
+                     lab='Complex', set_logbins=saveres_sym, pdf=False)
+    wt_diff(saveres_sym, saveres_compl, 'count_diff', resfolder)
 
-    #saveres_sym = waiting_time_distribution(df, resfolder, 'IF + SFC', \
-    #                lab='Part of complex', pdf=True)
-    #saveres_compl = waiting_time_distribution(dfc, resfolder, 'IF + CF', \
-    #                lab='Complex', set_logbins=saveres_sym, pdf=True)
-    #wt_diff(saveres_sym, saveres_compl, 'model_residuals', resfolder)
-
+    saveres_sym = waiting_time_distribution(df, resfolder, 'IF + SFC', \
+                    lab='Part of complex', pdf=True)
+    saveres_compl = waiting_time_distribution(dfc, resfolder, 'IF + CF', \
+                    lab='Complex', set_logbins=saveres_sym, pdf=True)
+    wt_diff(saveres_sym, saveres_compl, 'model_residuals', resfolder)
+    set_trace()
     ### Fits with stellar parameters (all in log quantities)
     #simple_complex_fit(df[single], df[~single], dfc[complex], \
     #        'log_radius', 'log_energy', \
@@ -646,19 +648,22 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #        'log_energy', 'log_fwhm', \
     #        r'$\log$ Energy [erg]', r'$\log$ FWHM [min]', resfolder)
     #simple_complex_fit(df[single], df[~single], dfc[complex], \
-    #        'log_amplitude', 'log_duration', \
-    #        r'$\log$ Amplitude', r'$\log$ Duration [min]', resfolder)
+    #        'logg', 'log_amplitude', \
+    #        r'$\log g$', r'$\log$ Amplitude', resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #        'logg', 'log_fwhm', \
+    #        r'$\log g$', r'$\log$ FWHM', resfolder)
     #simple_complex_fit(df[single], df[~single], dfc[complex], \
     #    'log_radius', 'log_impulse', \
     #     r'$\log (R_\star/R_\odot)$', r'$\log$ Impulsiveness [min$^{-1}$]', \
     #     resfolder)
 
     #consecutive_flare_stats(df, dfc, resfolder)
-    segment_regression(pd.concat([df, dfc[complex]]), 'log_ED', resfolder, \
-        labelx=r'$\log Ro$', labely=r'$\log$ ED')
-    #segment_regression(pd.concat([df, dfc[complex]]), 'rate_per_target', \
-    #                resfolder, labelx=r'$Ro$', \
-    #                labely=r'$\log$ Flares (star day)$^{-1}$')
+    #segment_regression(pd.concat([df, dfc[complex]]), 'log_ED', resfolder, \
+    #    labelx=r'$\log Ro$', labely=r'$\log$ ED')
+    segment_regression(pd.concat([df, dfc[complex]]), 'rate_per_target', \
+                    resfolder, labelx=r'$Ro$', \
+                    labely=r'$\log$ Flares (star day)$^{-1}$')
 
     #search_dragonking(dfc, resfolder)
     #search_dragonking(df, resfolder, endname='_distributions_allsingle')
@@ -1557,7 +1562,7 @@ def segment_regression(df, par, resfolder, labelx='', labely=''):
         intercepts = np.percentile([x.intercepts[0] for x in result], q)
         labels = ['xb', 'slope1', 'slope2', 'intercepts']
         for i, p in enumerate([xb, slope1, slope2, intercepts]):
-            print(labels[i], ': {:.2f}+{:.2f}-{:.2f}'.format(p[1], np.diff(p)[1], \
+            print(labels[i], ': {:.3f}+{:.3f}-{:.3f}'.format(p[1], np.diff(p)[1], \
                         np.diff(p)[0]))
         print('Delta BIC 2 vs 1 segment:', bic2 - bic1)
 
@@ -2050,18 +2055,30 @@ def Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder):
     nfl_unique = nfl.drop_duplicates(subset='ticname')
     df_unique = df.drop_duplicates(subset='ticname')
 
-    pars = ['radius', 'Teff [K]', 'Ro_wright']
+    pars = ['radius', 'Teff [K]', 'Ro_wright', 'Ro_bins', 'mass', 'mass_bins', \
+            'Prot', 'Spectral type']
     df_tot = pd.concat([df_unique[pars], nfl_unique[pars]])
-    ro_bins = [0., 0.1, 0.5, np.inf]
-    df_tot['Ro_bins'] = pd.cut(df_tot['Ro_wright'], bins=ro_bins, \
-        labels=[r'$Ro \leq 0.1$', r'$0.1 < Ro \leq 0.5$', r'$Ro > 0.5$'])
-    sns.scatterplot(df_tot, x='radius', y='Teff [K]', s=20, hue='Ro_bins', \
-            palette='colorblind')
+    #ro_bins = [0., 0.1, 0.5, np.inf]
+    #df_tot['Ro_bins'] = pd.cut(df_tot['Ro_wright'], bins=ro_bins, \
+    #    labels=[r'$Ro \leq 0.1$', r'$0.1 < Ro \leq 0.5$', r'$Ro > 0.5$'])
+    df_tot.rename(columns={'mass_bins':'Mass', 'Ro_bins':'$Ro$'}, inplace=True)
+    sns.scatterplot(df_tot, x='radius', y='Teff [K]', s=30, hue='$Ro$', \
+            style='Mass', palette='colorblind', markers=['.', 'o'])
     plt.xlabel(r'$R_\star [R_\odot]$', fontsize=14)
     plt.ylabel(r'$T_\mathrm{eff}$ [K]', fontsize=14)
     plt.legend()
     plt.tight_layout()
     plt.savefig(resfolder + 'Tstar_vs_Rstar.pdf')
+    plt.close()
+
+    # Add histogram for rotation periods
+    plt.figure(figsize=(6, 3))
+    sns.histplot(data=df_tot, x="Prot", hue="Spectral type", \
+                    multiple="dodge", bins=5, shrink=.8)
+    plt.xlabel(r'$P_\mathrm{rot}$ [days]', fontsize=14)
+    plt.ylabel('Stars', fontsize=14)
+    plt.tight_layout()
+    plt.savefig(resfolder + 'rot_periods.pdf')
     plt.close()
 
     return
@@ -2216,36 +2233,42 @@ def flare_rate_per_target(df, resfolder):
 
     ftd = ['IF', 'SFC', 'CF']
     fits = []
+    spearmanr = []
+    fig, ax = plt.subplots()
     for ift, ft in enumerate([single, sfc, complex]):
         fit = np.polyfit(df[ft][flag]['log_Ro'], \
                  df[ft][flag]['rate_per_target'], 1)
         fits.append(fit)
+        sp = stats.spearmanr(df[ft][flag]['log_Ro'], \
+                            df[ft][flag]['rate_per_target'])
+        spearmanr.append(sp)
         print('Fit rate,', ftd[ift], ':', fit)
+        ax.scatter(df[ft][flag]['log_Ro'], df[ft][flag]['rate_per_target'], \
+                label=ftd[ift] + r': $r_s=${:.2f}'.format(sp[0]), marker='.')
 
     colors = ['royalblue', 'orange', 'g']
     #fig, ax = plt.subplots()
     x = np.linspace(-2.7, 0, 1000)
-    g = sns.FacetGrid(df, col='Flare type', hue='Flare type', col_wrap=3, \
-            height=3)
-    #sns.kdeplot(df, x='log_Ro', y='rate_per_target', hue='Flare type', \
-    #        alpha=0.5, palette='colorblind', levels=1)#fill=True,
-    g.map(sns.regplot, "log_Ro", "rate_per_target", \
-            ci=None, scatter_kws={"s": 10})
+    #g = sns.FacetGrid(df, col='Flare type', hue='Flare type', col_wrap=3, \
+    #        height=3)
+    #sns.scatterplot(df, x='log_Ro', y='rate_per_target', hue='Flare type', \
+    #        alpha=0.5, palette='colorblind')#fill=True,
+    #g.map(sns.regplot, "log_Ro", "rate_per_target", \
+    #        ci=None, scatter_kws={"s": 10})
 
     #for i, cc in enumerate(colors):
     #    plt.plot(x, np.polyval(fits[i], x), c=colors[i])
-    g.set_axis_labels(r'$\log Ro$', r'Flares (star day)$^{-1}$', fontsize=14)  # Single x-axis label for all subplots
-    g.set_titles(fontsize=35)  # O
-    #plt.xlabel(r'$\log Ro$', fontsize=14)
-    #plt.ylabel(r'Flares (star day)$^{-1}$', fontsize=14)
-    #plt.tight_layout()
+    #g.set_axis_labels(r'$\log Ro$', r'Flares (star day)$^{-1}$', fontsize=14)  # Single x-axis label for all subplots
+    #g.set_titles(fontsize=35)  # O
+    plt.xlabel(r'$\log Ro$', fontsize=14)
+    plt.ylabel(r'Flares (star day)$^{-1}$', fontsize=14)
+    plt.legend()
+    plt.tight_layout()
     #plt.ylim(df['rate_per_target'].min() - 0.1, \
     #            df['rate_per_target'].max() + 0.1)
-    plt.show()
-    set_trace()
     plt.savefig(resfolder + 'flare_rate_per_target.pdf')
     plt.close()
-    set_trace()
+
     return df
 
 def duration_vs_energy_vs_logg(dd, resfolder, label='', plot_fit=True):
@@ -2367,19 +2390,38 @@ def condense_flare_cascades(df, resfolder):
         dfc.rename(columns={'t12':'FWHM [min]'}, inplace=True)
         group_cols = ['LCname', 'n_event']
 
+        # Get peak time as mean weighted over energy
+        wm = lambda x: pd.Series({'Weighted peak time': \
+                np.average(x['Peak time [BTJD]'], weights=x['Energy [erg]'])})
+        #dfc['Peak time [BTJD]'] \
+        #        = dfc.groupby(group_cols)['Peak time [BTJD]'].transform('mean')
+        peak_time_wmean = dfc.groupby(group_cols).apply(wm)
+        #dfc['Peak time [BTJD]'] \
+        mm = lambda x: pd.Series({'Mean peak time': \
+                np.mean(x['Peak time [BTJD]'])})
+        peak_time_mean = dfc.groupby(group_cols).apply(mm)
+
+        dfc = dfc.merge(peak_time_wmean, on=group_cols, how='left')
+        dfc = dfc.merge(peak_time_mean, on=group_cols, how='left')
+
+        # Show difference between mean and weighted mean peak time
+        #flag = dfc['Mean peak time'] != dfc['Weighted peak time']
+        #plt.scatter(dfc['Mean peak time'][flag], \
+            #(dfc['Weighted peak time'][flag] - dfc['Mean peak time'][flag])*86400., \ alpha=0.5)
+        #plt.show()
+        #set_trace()
+
         cols_to_sum = ['ED [s]', 'Energy (Shibayama) [erg]', \
                         'Energy [erg]', 'Energy [J]']
         dfc[cols_to_sum] = dfc.groupby(group_cols)[cols_to_sum].transform('sum')
         dfc['peaks_per_event'] = dfc.groupby(group_cols)['LCname'].transform('count')
 
-        dfc['Peak time [BTJD]'] \
-                = dfc.groupby(group_cols)['Peak time [BTJD]'].transform('mean')
         cols_to_max = ['Peak luminosity [erg s$^{-1}$]', 'Peak amplitude', \
                 'Area [m$^2$]', 'Peak flux [W m$^{-2}$]', 'Peak luminosity [W]', \
                 'Peak flux [erg s$^{-1}$ cm$^{-2}$]']
         dfc[cols_to_max] = dfc.groupby(group_cols)[cols_to_max].transform('max')
         #dfc['Impulsiveness [min$^{-1}$]'] = dfc['Peak amplitude']/dfc['FWHM [min]']
-        dfc['Impulsiveness [min$^{-1}$]'] = dfc['Peak luminosity [erg s$^{-1}$]']/dfc['FWHM [min]']
+        dfc['Impulsiveness [min$^{-1}$]'] = dfc['Peak amplitude']/dfc['FWHM [min]']
 
         # Identifier for every cascade
         #dfc['ident'] = dfc.groupby(group_cols).ngroup()
@@ -2388,7 +2430,9 @@ def condense_flare_cascades(df, resfolder):
         #f = lambda x: np.average(dfc['Peak time [BTJD]'], weights=dfc['ED [s]'])
         #weighted_peak_time = dfc.groupby(group_cols).apply(f)
         #dfc.drop_duplicates(subset='ident', inplace=True)
-        dfc.drop_duplicates(subset='Peak time [BTJD]', inplace=True)
+        dfc.drop_duplicates(subset='Mean peak time', inplace=True)
+        dfc.drop(columns='Peak time [BTJD]', inplace=True)
+        dfc.rename(columns={'Weighted peak time':'Peak time [BTJD]'}, inplace=True)
         dfc.to_csv(fcfile, index=False)
     else:
         dfc = pd.read_csv(fcfile)
@@ -2472,6 +2516,9 @@ def get_non_flaring_stars(resfolder, maxT, maxR, maxTmag, maxProt, maxFAP):
     surf_g = (10**nfl['logg'])/100.*units.m/units.s**2
     mass = surf_g*(nfl['RADIUS']*constants.R_sun)**2/constants.G
     nfl['mass'] = mass/constants.M_sun
+    mass_bins = [0., 0.35, np.inf]
+    nfl['mass_bins'] = pd.cut(nfl['mass'], bins=mass_bins, \
+                    labels=[r'$M \leq 0.35~M_\odot$', r'$M > 0.35~M_\odot$'])
     nfl['tau_conv_wright'] = compute_tau_conv_wright_mass(nfl['mass'])
     nfl['Ro_wright'] = (nfl['Prot_[days]']/nfl['tau_conv_wright']).astype(float)
     nfl.dropna(subset=['Ro_wright'], inplace=True)
@@ -2479,6 +2526,10 @@ def get_non_flaring_stars(resfolder, maxT, maxR, maxTmag, maxProt, maxFAP):
     ro_bins = [0., 0.1, 0.5, np.inf]
     nfl['Ro_bins'] = pd.cut(nfl['Ro_wright'], bins=ro_bins, \
         labels=[r'$Ro \leq 0.1$', r'$0.1 < Ro \leq 0.5$', r'$Ro > 0.5$'])
+
+    tlim = [0., 4200., 5300., 5950., 7200.]
+    sptype = ['M', 'K', 'G', 'F']
+    nfl['Spectral type'] = pd.cut(nfl['Teff [K]'], bins=tlim, labels=sptype)
 
     '''
     plt.loglog(nfl['Ro_cranmer'], nfl['Ro_bonanno'], '.')
