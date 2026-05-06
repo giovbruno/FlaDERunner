@@ -27,6 +27,7 @@ import seaborn as sns
 from astropy.modeling.models import BrokenPowerLaw1D
 import flare_class
 import flare_detection as fd
+import binsreg
 
 plt.ioff()
 
@@ -592,6 +593,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
         dd['waiting_time'] = dd.groupby(['ticname', 'LCname'])[ \
                             'Peak time [BTJD]'].diff()*24.*60.
         # Flare rate per target
+
         dd['flares_per_target'] = dd.groupby(['ticname', 'Flare type']).transform( \
                                 'size').astype('float')
         dd['time_on_target'] = dd.groupby('ticname')['LCname'].transform( \
@@ -609,10 +611,10 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     nfl = nfl[flagT]
 
     ### Trends
-    #Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder)
+    Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder)
 
     #compare_Ro(df, resfolder)
-    #flaring_vs_nonflaring_stars(df, nfl, resfolder)
+    flaring_vs_nonflaring_stars(df, nfl, resfolder)
     #flare_rate_per_target(pd.concat([df, dfc[complex]]), resfolder)
 
     #energy_rate(df, resfolder)
@@ -622,18 +624,18 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
 
     # Waiting time distribution and relative differences (first, between counts in
     # data, then between data and model)
-    saveres_sym = waiting_time_distribution(df, resfolder, 'IF + SFC', \
-                    lab='Part of complex', pdf=False)
-    saveres_compl = waiting_time_distribution(dfc, resfolder, 'IF + CF', \
-                     lab='Complex', set_logbins=saveres_sym, pdf=False)
-    wt_diff(saveres_sym, saveres_compl, 'count_diff', resfolder)
+    #saveres_sym = waiting_time_distribution(df, resfolder, 'IF + SFC', \
+    #                lab='Part of complex', pdf=False)
+    #saveres_compl = waiting_time_distribution(dfc, resfolder, 'IF + CF', \
+    #                 lab='Complex', set_logbins=saveres_sym, pdf=False)
+    #wt_diff(saveres_sym, saveres_compl, 'count_diff', resfolder)
 
-    saveres_sym = waiting_time_distribution(df, resfolder, 'IF + SFC', \
-                    lab='Part of complex', pdf=True)
-    saveres_compl = waiting_time_distribution(dfc, resfolder, 'IF + CF', \
-                    lab='Complex', set_logbins=saveres_sym, pdf=True)
-    wt_diff(saveres_sym, saveres_compl, 'model_residuals', resfolder)
-    set_trace()
+    #saveres_sym = waiting_time_distribution(df, resfolder, 'IF + SFC', \
+    #                lab='Part of complex', pdf=True)
+    #saveres_compl = waiting_time_distribution(dfc, resfolder, 'IF + CF', \
+    #                lab='Complex', set_logbins=saveres_sym, pdf=True)
+    #wt_diff(saveres_sym, saveres_compl, 'model_residuals', resfolder)
+
     ### Fits with stellar parameters (all in log quantities)
     #simple_complex_fit(df[single], df[~single], dfc[complex], \
     #        'log_radius', 'log_energy', \
@@ -660,10 +662,10 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
 
     #consecutive_flare_stats(df, dfc, resfolder)
     #segment_regression(pd.concat([df, dfc[complex]]), 'log_ED', resfolder, \
-    #    labelx=r'$\log Ro$', labely=r'$\log$ ED')
-    segment_regression(pd.concat([df, dfc[complex]]), 'rate_per_target', \
-                    resfolder, labelx=r'$Ro$', \
-                    labely=r'$\log$ Flares (star day)$^{-1}$')
+    #    labelx=r'$\log Ro$', labely=r'$\log$ ED', samesize=True)
+    #segment_regression(pd.concat([df, dfc[complex]]), 'rate_per_target', \
+    #                resfolder, labelx=r'$Ro$', \
+    #                labely=r'$\log$ Flares (star day)$^{-1}$')
 
     #search_dragonking(dfc, resfolder)
     #search_dragonking(df, resfolder, endname='_distributions_allsingle')
@@ -1022,15 +1024,24 @@ def simple_complex_fit(df1, df2, df3, par1, par2, label_par1, label_par2, \
 
     deg (int): degree for polynomial fits
     '''
+    colors = ['royalblue', 'orange', 'g']
 
     dftemp = pd.concat([df1, df2, df3])
     #sns.jointplot(dftemp, x=par1, y=par2, hue='Flare type', kind='hist', \
     #        alpha=0.5, palette='colorblind', \
     #        marginal_kws=dict(fill=False, element='step'))
-    sns.scatterplot(dftemp, x=par1, y=par2, hue='Flare type', \
-            alpha=0.5, palette='colorblind', s=10, style='Flare type')
+    fig, ax = plt.subplots(figsize=(6, 4))
+    for i, dd in enumerate([df1, df2, df3]):
+        bin_edges = np.linspace(dd[par1].min() + 0.1*i, dd[par1].max(), 15)
+        dd['bins'] = pd.cut(dd[par1], bins=bin_edges, include_lowest=True)
+        binned_stats = dd.groupby('bins')[par2].agg(['mean', 'std'])
+        bins = 0.5*(bin_edges[1:] + bin_edges[:-1])
+        ax.errorbar(bins, binned_stats['mean'], yerr=binned_stats['std'], \
+                    fmt='o', color=colors[i], capsize=2)
+    #sns.scatterplot(dftemp, x=par1, y=par2, hue='Flare type', \
+    #        alpha=0.5, palette='colorblind', s=10, style='Flare type')
 
-    labels = ['dataset 1', 'dataset 2', 'dataset 3']
+    labels = ['IF', 'SFC', 'CF']
     for i, dd in enumerate([df1, df2, df3]):
         x = dd[par1]
         y = dd[par2]
@@ -1056,7 +1067,7 @@ def simple_complex_fit(df1, df2, df3, par1, par2, label_par1, label_par2, \
                         np.diff(percs)[1], np.diff(percs)[0]))
             meds.append(percs[1])
         xTh = np.linspace(x.min(), x.max(), 100)
-        plt.plot(xTh, np.polyval(meds, xTh))
+        ax.plot(xTh, np.polyval(meds, xTh), color=colors[i], label=labels[i])
 
         # BIC, assuming uniform uncertainties and two free parameters
         # nvarys = 2
@@ -1070,10 +1081,11 @@ def simple_complex_fit(df1, df2, df3, par1, par2, label_par1, label_par2, \
         R, p = stats.spearmanr(x, y)
         print('Spearman R, p:', R, p)
 
-    plt.xlabel(label_par1, fontsize=14)
-    plt.ylabel(label_par2, fontsize=14)
-    plt.xlim(dftemp[par1].min() - 0.05, dftemp[par1].max() + 0.05)
-    plt.ylim(dftemp[par2].min() - 0.05, dftemp[par2].max() + 0.05)
+    plt.legend()
+    ax.set_xlabel(label_par1, fontsize=14)
+    ax.set_ylabel(label_par2, fontsize=14)
+    #plt.xlim(dftemp[par1].min() - 0.05, dftemp[par1].max() + 0.05)
+    #plt.ylim(dftemp[par2].min() - 0.05, dftemp[par2].max() + 0.05)
     plt.tight_layout()
     plt.savefig(resfolder + par2.split(' [')[0] + '_vs_' + par1 + '.pdf')
     plt.close()
@@ -1514,15 +1526,22 @@ def compare_distributions(dist_fit):
 
     return
 
-def segment_regression(df, par, resfolder, labelx='', labely=''):
+def segment_regression(df, par, resfolder, labelx='', labely='', samesize=False):
     '''
     Segmented regression to ED vs Ro
+
+    Parameters
+    ----------
+    same size (bool): use the same size for all data sets (size of the samllest
+    sample), to see its statistical effect
     '''
     import pwlf
     xx = np.linspace(df['log_Ro'].min(), df['log_Ro'].max(), 1000)#.tolist()
     q = [15.9, 50., 84.1]
 
     ftd = ['IF', 'SFC', 'CF']
+    maxd = np.sum(df['Flare type'] == 'CF')
+
     colors = ['royalblue', 'orange', 'g']
     fits = []
     fig, ax = plt.subplots(figsize=(6, 4))
@@ -1539,7 +1558,10 @@ def segment_regression(df, par, resfolder, labelx='', labely=''):
         for j in range(1000):
             if j % 100 == 0:
                 print(j)
-            xi, yi = rng.choice([x, y], size=len(x), axis=1)
+            if not samesize:
+                xi, yi = rng.choice([x, y], size=len(x), axis=1)
+            else:
+                xi, yi = rng.choice([x, y], size=maxd, axis=1)
             segm_fit = pwlf.PiecewiseLinFit(xi, yi)
             segm_fit.fit(2)
             result.append(segm_fit)
@@ -1573,7 +1595,14 @@ def segment_regression(df, par, resfolder, labelx='', labely=''):
         #print('BIC PL:', res.bic)
 
         #fits.append(result)
-        ax.plot(x, y, '.', c=colors[ift], alpha=0.1)
+        #df_est = binsreg.binsreg(data=df[flag], x='log_Ro', y=par, noplot=True)
+        bin_edges = np.linspace(-2.5 + ift*0.1, 0.3 + ift*0.1, 20)
+        df['bins'] = pd.cut(df['log_Ro'], bins=bin_edges, include_lowest=True)
+        binned_stats = df[flag].groupby('bins')[par].agg(['mean', 'std'])
+        bins = 0.5*(bin_edges[1:] + bin_edges[:-1])
+        ax.errorbar(bins, binned_stats['mean'], yerr=binned_stats['std'], \
+                    fmt='o', color=colors[ift], capsize=2)
+        #ax.plot(x, y, '.', c=colors[ift], alpha=0.1)
         ax.plot(xx, model, linewidth=2, label=ft)
 
         # Comparison with linear fit
@@ -1607,7 +1636,7 @@ def segment_regression(df, par, resfolder, labelx='', labely=''):
     plt.ylabel(labely, fontsize=14)
     plt.legend()
     plt.tight_layout()
-    plt.savefig(resfolder + par + '_vs_Ro_segmented.pdf')
+    plt.savefig(resfolder + par + '_vs_Ro_segmented_samesize.pdf')
     plt.close()
 
     return
@@ -2009,20 +2038,22 @@ def flaring_vs_nonflaring_stars(df, nfl, resfolder):
     nfl_unique = nfl.drop_duplicates(subset='ticname')
     df_unique = df.drop_duplicates(subset='ticname')
 
-    labels = [r'$T_\mathrm{eff}$ [K]', r'$Ro$', r'Spotted area [$A_\odot$]']
+    labels = [r'$T_\mathrm{eff}$ [K]', r'$Ro$', r'Spotted area [$A_\odot$]', \
+        'TESS magnitude']
 
     #def forward(x):
     #    return x/x.max()*100.
     #def inverse(x):
     #    return x*x.max()/100.
 
-    for pi, p in enumerate(['Teff [K]', 'Ro_wright', 'Aspot [Asun]']):
-        if pi == 0:
+    for pi, p in enumerate(['Teff [K]', 'Ro_wright', 'Aspot [Asun]', 'tessmag']):
+        if pi == 0 or pi == 3:
             bin_edges = 7
         elif pi == 1:
             bin_edges = np.logspace(-3., 1., 9)
         elif pi == 2:
             bin_edges = np.logspace(-3.5, 0., 10)
+
         hh, bin_edges = np.histogram(nfl_unique[p], bins=bin_edges)
         hh2, bin_edges = np.histogram(df_unique[p], bins=bin_edges)
         fig, ax = plt.subplots(figsize=(6, 3))
@@ -2056,7 +2087,7 @@ def Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder):
     df_unique = df.drop_duplicates(subset='ticname')
 
     pars = ['radius', 'Teff [K]', 'Ro_wright', 'Ro_bins', 'mass', 'mass_bins', \
-            'Prot', 'Spectral type']
+            'Prot', 'Spectral type', 'tessmag']
     df_tot = pd.concat([df_unique[pars], nfl_unique[pars]])
     #ro_bins = [0., 0.1, 0.5, np.inf]
     #df_tot['Ro_bins'] = pd.cut(df_tot['Ro_wright'], bins=ro_bins, \
@@ -2079,6 +2110,16 @@ def Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder):
     plt.ylabel('Stars', fontsize=14)
     plt.tight_layout()
     plt.savefig(resfolder + 'rot_periods.pdf')
+    plt.close()
+
+    # Magnitudes
+    plt.figure(figsize=(6, 3))
+    sns.histplot(data=df_unique, x="tessmag", hue="Spectral type", \
+                    multiple="dodge", bins=5, shrink=.8)
+    plt.xlabel(r'TESS magnitude', fontsize=14)
+    plt.ylabel('Flaring stars', fontsize=14)
+    plt.tight_layout()
+    plt.savefig(resfolder + 'flaring_magnitudes.pdf')
     plt.close()
 
     return
