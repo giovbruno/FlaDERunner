@@ -614,7 +614,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder)
 
     #compare_Ro(df, resfolder)
-    flaring_vs_nonflaring_stars(df, nfl, resfolder)
+    #flaring_vs_nonflaring_stars(df, nfl, resfolder)
     #flare_rate_per_target(pd.concat([df, dfc[complex]]), resfolder)
 
     #energy_rate(df, resfolder)
@@ -661,6 +661,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #     resfolder)
 
     #consecutive_flare_stats(df, dfc, resfolder)
+    set_trace()
     #segment_regression(pd.concat([df, dfc[complex]]), 'log_ED', resfolder, \
     #    labelx=r'$\log Ro$', labely=r'$\log$ ED', samesize=True)
     #segment_regression(pd.concat([df, dfc[complex]]), 'rate_per_target', \
@@ -669,7 +670,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
 
     #search_dragonking(dfc, resfolder)
     #search_dragonking(df, resfolder, endname='_distributions_allsingle')
-    return
+    #return
     # Separate results by spectral type
     pars = ['Energy [erg]', 'Peak amplitude', 'Duration [min]', 'FWHM [min]']
     stellar_pars = ['Teff [K]', 'Ro_bonanno', 'logg', 'tessmag']
@@ -2014,11 +2015,12 @@ def energy_spotarea(df, resfolder):
     #    hue='mass_bins', style='Dataset', ax=ax, palette='colorblind')#, \
      #   markers=markers)
     ax.scatter(df_oka[r'Spotted area [$A_\odot$]'], df_oka['Energy [erg]'], \
-                marker='x', c='m', label='Kepler superflares', alpha=0.5)
+                marker='x', c='m', label='Kepler superflares', alpha=0.2)
     ax.scatter(df_notsu[r'Spotted area [$A_\odot$]'], df_notsu['Energy [erg]'], \
-                marker='^', c='lime', label='Solar flares', alpha=0.2)
+                marker='s', c='lime', label='Solar flares', alpha=0.2)
     sns.scatterplot(dfthis, x=r'Spotted area [$A_\odot$]', y='Energy [erg]', \
-        hue='mass_bins', ax=ax, s=10, alpha=0.5, palette='colorblind')
+        style='mass_bins', ax=ax, s=40, alpha=0.2, palette='colorblind', \
+        hue='mass_bins', markers=['^', '.'])
     legend = ax.legend_
     if legend is not None:
         legend.set_title('')
@@ -2087,7 +2089,7 @@ def Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder):
     df_unique = df.drop_duplicates(subset='ticname')
 
     pars = ['radius', 'Teff [K]', 'Ro_wright', 'Ro_bins', 'mass', 'mass_bins', \
-            'Prot', 'Spectral type', 'tessmag']
+            'Prot', 'Spectral type', 'tessmag', 'tau_conv_wright']
     df_tot = pd.concat([df_unique[pars], nfl_unique[pars]])
     #ro_bins = [0., 0.1, 0.5, np.inf]
     #df_tot['Ro_bins'] = pd.cut(df_tot['Ro_wright'], bins=ro_bins, \
@@ -2103,23 +2105,24 @@ def Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder):
     plt.close()
 
     # Add histogram for rotation periods
-    plt.figure(figsize=(6, 3))
-    sns.histplot(data=df_tot, x="Prot", hue="Spectral type", \
-                    multiple="dodge", bins=5, shrink=.8)
+    plt.figure(figsize=(6, 4))
+    sns.scatterplot(data=df_tot, x="Prot", y='tau_conv_wright', hue="Spectral type")
+    #                multiple="dodge", bins=5, shrink=.8)
     plt.xlabel(r'$P_\mathrm{rot}$ [days]', fontsize=14)
-    plt.ylabel('Stars', fontsize=14)
+    plt.ylabel(r'$\tau_c$ [days]', fontsize=14)
     plt.tight_layout()
+    plt.legend(loc='upper right')
     plt.savefig(resfolder + 'rot_periods.pdf')
     plt.close()
 
     # Magnitudes
     plt.figure(figsize=(6, 3))
-    sns.histplot(data=df_unique, x="tessmag", hue="Spectral type", \
+    sns.histplot(data=df_tot, x="tessmag", hue="Spectral type", \
                     multiple="dodge", bins=5, shrink=.8)
     plt.xlabel(r'TESS magnitude', fontsize=14)
-    plt.ylabel('Flaring stars', fontsize=14)
+    plt.ylabel('Stars', fontsize=14)
     plt.tight_layout()
-    plt.savefig(resfolder + 'flaring_magnitudes.pdf')
+    plt.savefig(resfolder + 'target_magnitudes.pdf')
     plt.close()
 
     return
@@ -2211,7 +2214,7 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
     markers = ['o', '.']
     oks = []
     prs = []
-    labels = ['IF + CF: ', 'SFC: ']
+    labels = ['Isolated + multi-peak: ', 'Multi-peak components: ']
     for i, dd in enumerate([dfi, dfc]):
         ok = ~np.isnan(dd['Energy_consecutive [erg]'])
         oks.append(ok)
