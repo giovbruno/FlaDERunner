@@ -661,19 +661,22 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #     resfolder)
 
     #consecutive_flare_stats(df, dfc, resfolder)
-    set_trace()
+
     #segment_regression(pd.concat([df, dfc[complex]]), 'log_ED', resfolder, \
     #    labelx=r'$\log Ro$', labely=r'$\log$ ED', samesize=True)
     #segment_regression(pd.concat([df, dfc[complex]]), 'rate_per_target', \
     #                resfolder, labelx=r'$Ro$', \
     #                labely=r'$\log$ Flares (star day)$^{-1}$')
 
-    #search_dragonking(dfc, resfolder)
-    #search_dragonking(df, resfolder, endname='_distributions_allsingle')
+    search_dragonking(dfc, resfolder)
+    search_dragonking(df, resfolder, endname='_distributions_allsingle')
+
+    return
     #return
     # Separate results by spectral type
     pars = ['Energy [erg]', 'Peak amplitude', 'Duration [min]', 'FWHM [min]']
-    stellar_pars = ['Teff [K]', 'Ro_bonanno', 'logg', 'tessmag']
+    FDpred = [1.67, 1.80, 2.0, 2.0]
+    stellar_pars = ['Teff [K]', 'Ro_wright', 'logg', 'tessmag']
     stpar_labels = [r'$T_\mathrm{eff}$ [K]', r'$\log Ro$', r'$\log g$', 'TESS mag']
 
     logs = ['IF', 'SFC', 'CF']
@@ -713,6 +716,8 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
             else:
                 target_pars, target_dist = fit_target_distributions(dd, par, \
                     stellar_pars, targets.keys())
+            # Add FD SOC prediction for given parameter
+            target_pars['FD_pred'] = FDpred[pi]
 
             if di == 0:
                 target_pars_simple = copy.deepcopy(target_pars)
@@ -795,8 +800,9 @@ def simulate_pl_size(resfolder):
     a = 1.8
     theo = powerlaw.Power_Law(xmin=1e30, parameters=[a])
 
-    fig, ax = plt.subplots()
-    for samplesize in [50, 100, 200, 500, 1000, 2000, 5000, 10000]:
+    xx, yy, xerr, yerr, q = [], [], [], [], []
+    N = [50, 100, 200, 500, 1000]#, 2000]
+    for samplesize in N:#, 5000, 10000]:
         print('Sample size:', samplesize)
         alpha = []
         sigma = []
@@ -804,21 +810,51 @@ def simulate_pl_size(resfolder):
         x2 = []
         for iter in range(1000):
             simuldata = theo.generate_random(samplesize)
+            #simuldata = simuldata[simuldata > 10**30.5]
             fit = powerlaw.Fit(simuldata, verbose=False)
             alpha.append(fit.alpha)
             sigma.append(fit.sigma)
             x1.append(fit.xmin)
             x2.append(simuldata.max())
         #perc = np.percentile(alpha, [15.9, 50., 84.1])
-        perc = np.percentile(x2, [15.9, 50., 84.1])
-        dperc = np.diff(perc)[::-1]
-        ax.errorbar([samplesize], [perc[1]], yerr=[[dperc[0]], [dperc[1]]], \
-            marker='o', color='gray', capsize=2)
-    ax.plot([30, 10100], [a, a], 'k--', label='Ground truth')
-    plt.legend()
-    ax.set_xscale('log')
-    ax.set_xlabel('Sample size', fontsize=14)
+        perc1 = np.percentile(alpha, [15.9, 50., 84.1])
+        dperc1 = np.diff(perc1)[::-1]
+        perc2 = np.percentile(np.log10(x1), [15.9, 50., 84.1])
+        dperc2 = np.diff(perc2)[::-1]
+        xx.append(perc2[1])
+        yy.append(perc1[1])
+        yerr.append([[dperc1[0]], [dperc1[1]]])
+        xerr.append([[dperc2[0]], [dperc2[1]]])
+
+        perc3 = np.percentile(np.log10(x2), [15.9, 50., 84.1])
+        q.append(perc3[1] - perc2[1])
+
+    fig, ax = plt.subplots()
+    sc = ax.scatter(xx, yy, s=N, c=q)
+    for xy in range(len(xx)):
+        ax.text(xx[xy], yy[xy], N[xy])
+    ax.set_xlabel(r'$\log x_1$', fontsize=14)
     ax.set_ylabel(r'$\alpha$', fontsize=14)
+    cbar = plt.colorbar(sc)
+    cbar.set_label(r'$q$', fontsize=14)
+    plt.savefig(resfolder + 'PL_model_scatter.pdf')
+    plt.close()
+
+    fig, ax = plt.subplots(figsize=(12,6), nrows=2, ncols=2)
+    ax[0][0].plot(N, np.hstack(np.mean(xerr, axis=1)), 'ko-')
+    ax[0][0].set_xlabel('Sample size', fontsize=14)
+    ax[0][0].set_ylabel(r'$\Delta \alpha$', fontsize=14)
+    ax[0][1].plot(N, np.hstack(np.mean(yerr, axis=1)), 'ko-')
+    ax[0][1].set_xlabel('Sample size', fontsize=14)
+    ax[0][1].set_ylabel(r'$\Delta x_1$', fontsize=14)
+
+    ax[1][0].plot(q, np.hstack(np.mean(xerr, axis=1)), 'ko-')
+    ax[1][0].set_xlabel(r'q', fontsize=14)
+    ax[1][0].set_ylabel(r'$\Delta \alpha$', fontsize=14)
+    ax[1][1].plot(q, np.hstack(np.mean(yerr, axis=1)), 'ko-')
+    ax[1][1].set_xlabel(r'$q$', fontsize=14)
+    ax[1][1].set_ylabel(r'$\Delta x_1$', fontsize=14)
+    plt.tight_layout()
     plt.show()
     set_trace()
     plt.savefig(resfolder + 'PL_sample_size.pdf')
@@ -893,7 +929,7 @@ def complex_flare_fraction(df, resfolder):
 
     return
 
-def monte_carlo_permutation(x_obs, y_obs, sigma_y, n_mc=1000, n_perm=1000):
+def monte_carlo_permutation(x_obs, y_obs, sigma_y, n_mc=10, n_perm=10):
     '''
     Simulate many data sets within uncertainties and for each derive a
     Spearman correlation coefficient with its p-value.
@@ -1146,7 +1182,7 @@ def fit_target_distributions(df, par, stellar_pars, targets, bootstrap=True):
             print('Bootstrap for target:', tg, '...')
             distrib = df[par][flag_tg]
             rng = np.random.default_rng()
-            for i in range(1000):
+            for i in range(10):
                 newdata = rng.choice(distrib, size=len(distrib))
                 fit_th = powerlaw.Fit(newdata, verbose=False)
                 alphas.append(fit_th.alpha)
@@ -1227,7 +1263,7 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
         for sti, stpar in enumerate(stellar_pars):
             # Scatter plots + errorbars: see
             # https://how2matplotlib.com/matplotlib-errorbar-color.html
-            if stpar != 'Ro_bonanno':
+            if stpar != 'Ro_wright':
                 x = ddd[stpar]
             else:
                 x = np.log10(ddd[stpar])
@@ -1243,7 +1279,7 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
             pfit.add('b', vary=True, min=-10, max=10, value=0.)
             #pfit.add('c', vary=False, min=-10, max=10, value=0.)
             result = lmfit.minimize(residual_line, pfit, \
-                       args=(x, y, yerr), calc_covar=True)
+                       args=(x, y, yerr), calc_covar=True, nan_policy='omit')
 
             ax1.plot(np.sort(x), (y - result.residual*yerr)[np.argsort(x)], \
                 linestyles[tpi], c=colors[tpi], \
@@ -1252,6 +1288,11 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
 
             ax1.errorbar(x, y, yerr=yerr, fmt=markers[tpi], c=colors[tpi], \
                         capsize=2)
+
+            # prediction from FD SOC mdoel
+            th = target_pars['FD_pred']
+            ax1.plot([x.min(), x.max()], [th, th], 'k--')
+            set_trace()
             ax1.set_xlabel(stpar_labels[sti], fontsize=14)
             ax1.set_ylabel(par.split('[')[0] + r' $\alpha$', fontsize=14)
             ax1.legend()
@@ -1676,7 +1717,7 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
                 alpha=0.5)
     plt.legend()
     plt.xlabel('Energy [erg]', fontsize=14)
-    plt.ylabel('CCDF', fontsize=14)
+    plt.ylabel('PDF', fontsize=14)
     plt.tight_layout()
     plt.savefig(resfolder + par + endname + '.pdf')
     plt.close()
