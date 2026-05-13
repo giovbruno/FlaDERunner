@@ -296,14 +296,15 @@ def get_simulation_results(folderout, distance_threshold=3):
     #ax2.plot(xx2, xx2, 'r')
 
     ax1.plot(xx, np.polyval(fit_ampl[0], xx), 'r', label='Fit')
-    ax1.plot(xx, xx, 'r--', label='1:1')
+    ax1.plot(xx, xx, 'y--', label='1:1')
     ax2.plot(xx2, np.polyval(fit_fwhm[0], xx2), 'r', label='Fit')
-    ax2.plot(xx, xx, 'r--', label='1:1')
+    ax2.plot(xx2, xx2, 'y--', label='1:1')
 
     ax1.set_xlabel('Injected peak amplitude', fontsize=14)
     ax1.set_ylabel('Retrieved peak ampl.', fontsize=14)
     ax1.set_xscale('log')
     ax1.set_yscale('log')
+    ax1.legend()
     fig1.tight_layout()
     fig1.savefig(folderout + 'amplitude.pdf')
 
@@ -311,6 +312,7 @@ def get_simulation_results(folderout, distance_threshold=3):
     ax2.set_ylabel('Retrieved FWHM [min]', fontsize=14)
     ax2.set_xscale('log')
     ax2.set_yscale('log')
+    ax2.legend()
     fig2.tight_layout()
     fig2.savefig(folderout + 'fwhm.pdf')
     plt.close('all')

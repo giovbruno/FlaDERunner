@@ -611,7 +611,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     nfl = nfl[flagT]
 
     ### Trends
-    Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder)
+    #Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder)
 
     #compare_Ro(df, resfolder)
     #flaring_vs_nonflaring_stars(df, nfl, resfolder)
@@ -668,10 +668,9 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #                resfolder, labelx=r'$Ro$', \
     #                labely=r'$\log$ Flares (star day)$^{-1}$')
 
-    search_dragonking(dfc, resfolder)
-    search_dragonking(df, resfolder, endname='_distributions_allsingle')
+    #search_dragonking(dfc, resfolder)
+    #search_dragonking(df, resfolder, endname='_distributions_allsingle')
 
-    return
     #return
     # Separate results by spectral type
     pars = ['Energy [erg]', 'Peak amplitude', 'Duration [min]', 'FWHM [min]']
@@ -929,7 +928,7 @@ def complex_flare_fraction(df, resfolder):
 
     return
 
-def monte_carlo_permutation(x_obs, y_obs, sigma_y, n_mc=10, n_perm=10):
+def monte_carlo_permutation(x_obs, y_obs, sigma_y, n_mc=1000, n_perm=1000):
     '''
     Simulate many data sets within uncertainties and for each derive a
     Spearman correlation coefficient with its p-value.
@@ -1144,7 +1143,7 @@ def fit_target_distributions(df, par, stellar_pars, targets, bootstrap=True):
 
     target_pars = {}
     for tgp in ['alpha', 'sigma', 'nobs', 'maxval', 'minval', 'R_tg', 'p_tg', \
-                'deltabic_tg']:
+                'deltabic_tg', 'ticname']:
         target_pars[tgp] = []
     for tgp in stellar_pars:
         target_pars[tgp] = []
@@ -1157,13 +1156,14 @@ def fit_target_distributions(df, par, stellar_pars, targets, bootstrap=True):
         flag_tg = df['ticname'] == tg
         fit_tg = powerlaw.Fit(df[par][flag_tg], verbose=False)
         x, y = fit_tg.ccdf(original_data=False)
-        target_distrib.append([x, y])
+        target_distrib.append([tg, x, y])
 
         # Fit with a truncated power law
         R_tg, p_tg = fit_tg.distribution_compare('power_law', \
             'truncated_power_law', normalized_ratio=True)
         deltabic_tg = compare_bic(fit_tg, 'power_law', 'truncated_power_law')
         print(tg, ': PL vs Truncated PL Delta BIC =', deltabic_tg)
+        target_pars['ticname'].append(tg)
         target_pars['R_tg'].append(R_tg)
         target_pars['p_tg'].append(p_tg)
         target_pars['alpha'].append(fit_tg.alpha)
@@ -1182,7 +1182,7 @@ def fit_target_distributions(df, par, stellar_pars, targets, bootstrap=True):
             print('Bootstrap for target:', tg, '...')
             distrib = df[par][flag_tg]
             rng = np.random.default_rng()
-            for i in range(10):
+            for i in range(1000):
                 newdata = rng.choice(distrib, size=len(distrib))
                 fit_th = powerlaw.Fit(newdata, verbose=False)
                 alphas.append(fit_th.alpha)
@@ -1210,6 +1210,7 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
     ----------
     bootstrap: plot bootstrapped statistics or n**-1/2 ones
     '''
+    import math
 
     palpha = 'alpha'
     psigma = 'sigma'
@@ -1217,20 +1218,25 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
         palpha += '_bootstrap'
         psigma += '_bootstrap'
 
-    fig, ax = plt.subplots()
     linestyles = ['-', ':', '--']
     labels = ['IF', 'SFC', 'CF']
+    ntgs = max([len(target_pars1['ticname']), len(target_pars2['ticname']), \
+                    len(target_pars3['ticname'])])
+    nrows = math.ceil(ntgs / 3.)
+    fig, ax = plt.subplots(figsize=(12, 3*nrows), nrows=nrows, ncols=3)
+    axx = ax.flat
     if target_dist1 != {} or target_dist2 != {} or target_dist3 != {}:
         for tdi, td in enumerate([target_dist1, target_dist2, target_dist3]):
-            for jj, (x, y) in enumerate(td):
+            for jj, (ticname, x, y) in enumerate(td):
+                axx[jj].set_title(ticname)
                 if jj == 0:
-                    ax.loglog(x, y, linestyle=linestyles[tdi], color='k', \
-                    label=labels[tdi])
+                    axx[jj].loglog(x, y, linestyle=linestyles[tdi], \
+                            label=labels[tdi])
+                    axx[jj].legend()
                 else:
-                    ax.loglog(x, y, linestyle=linestyles[tdi], color='k')
-        ax.set_xlabel(par, fontsize=14)
-        ax.set_ylabel(r'CCDF', fontsize=14)
-        plt.legend()
+                    axx[jj].loglog(x, y, linestyle=linestyles[tdi])
+        fig.supxlabel(par, fontsize=14)
+        fig.supylabel(r'CCDF', fontsize=14)
         plt.tight_layout()
         plt.savefig(resfolder + par + '_distributions.pdf')
         plt.close()
@@ -1242,7 +1248,8 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
     fig1, ax1 = plt.subplots()
     fig2, ax2 = plt.subplots()
     fig3, ax3 = plt.subplots()
-    fig4, ax4 = plt.subplots(figsize=(7, 5))
+    fig4, ax4 = plt.subplots(figsize=(6, 4))
+    ax4min, ax4max = np.inf, -np.inf
     #if 'Energy' in par:
     fig5, ax5 = plt.subplots()
     for tpi, target_pars in enumerate([target_pars1, target_pars2, target_pars3]):
@@ -1261,6 +1268,7 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
         ddd['q'] = np.log10(ddd['maxval']/ddd['minval'])
 
         for sti, stpar in enumerate(stellar_pars):
+
             # Scatter plots + errorbars: see
             # https://how2matplotlib.com/matplotlib-errorbar-color.html
             if stpar != 'Ro_wright':
@@ -1289,10 +1297,6 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
             ax1.errorbar(x, y, yerr=yerr, fmt=markers[tpi], c=colors[tpi], \
                         capsize=2)
 
-            # prediction from FD SOC mdoel
-            th = target_pars['FD_pred']
-            ax1.plot([x.min(), x.max()], [th, th], 'k--')
-            set_trace()
             ax1.set_xlabel(stpar_labels[sti], fontsize=14)
             ax1.set_ylabel(par.split('[')[0] + r' $\alpha$', fontsize=14)
             ax1.legend()
@@ -1358,11 +1362,21 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
         fitpars = [result.params['a'], result.params['b']]#, result.params['c']]
         xTh = np.linspace(ddd['q'].min(), ddd['q'].max(), 100)
         print(par, 'fit alpha vs q:', lin_fit_labels(result, labels[tpi]))
-        if 'Energy' in par:
-            ax4.plot(xTh, np.zeros(len(xTh)) + 2., 'k--')
+        if xTh.min() < ax4min:
+            ax4min = xTh.min()
+        if xTh.max() > ax4max:
+            ax4max = xTh.max()
+
+        #if 'Energy' in par:
+        #    ax4.plot(xTh, np.zeros(len(xTh)) + 2., 'k--')
+        # prediction from FD SOC mdoel
+        if tpi == 0:
+            th = target_pars['FD_pred']
+            ax4.plot([0.1, 4.], [th, th], 'k--', label='FD SOC prediction')
         ax4.plot(xTh, np.polyval(fitpars, xTh), c=colors[tpi])#, label='$p$' + pv)
         ax4.set_xlabel(r'$q$', fontsize=14)
         ax4.set_ylabel(par.split('[')[0] + r' $\alpha$', fontsize=14)
+        ax4.set_xlim(ax4min - 0.1, ax4max + 0.1)
         fig4.tight_layout()
 
         # Print estimate
@@ -1689,6 +1703,7 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
     Plot energy distributions for targets with > 100 events and search for DK
     events. Measurement uncertainties are neglected here.
     '''
+    import math
 
     # For info
     dfc.sort_values(by='ticname', inplace=True)
@@ -1699,6 +1714,9 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
 
     dg = dfc.groupby(['ticname']).size()
     dg = dg[dg >= min_flares]
+    nrows = math.ceil(len(dg.keys()) / 3.)
+    fig, ax = plt.subplots(figsize=(12,3*nrows), nrows=nrows, ncols=3)
+    axx = ax.flat
     for i, tg in enumerate(dg.keys()):
 
         flag = dfc['ticname'] == tg
@@ -1706,18 +1724,19 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
                 + dfc['Spectral type'][flag].drop_duplicates().values[0])
 
         fit_nm = powerlaw.Fit(dfc[flag]['Energy [erg]'], verbose=False)
-        label = tg # + ' (' + str(dg[tg]) + ')'
-        if i == 0 :
-            fig_nm = fit_nm.plot_pdf(label=label, original_data=False)
-        else:
-            fit_nm.plot_pdf(ax=fig_nm, label=label, original_data=False)
+        label = tg + '\nN={}'.format(len(dfc[flag]))
+        fit_nm.plot_ccdf(ax=axx[i], label=label, original_data=False)
         deltabic = compare_bic(fit_nm, 'power_law', 'truncated_power_law')
         print('Delta BIC PL-truncated PL = {:.2f}'.format(deltabic))
-        fit_nm.truncated_power_law.plot_pdf(ax=fig_nm, color='k', linestyle='--', \
+        fit_nm.power_law.plot_ccdf(ax=axx[i], color='k', linestyle='--', \
                 alpha=0.5)
-    plt.legend()
-    plt.xlabel('Energy [erg]', fontsize=14)
-    plt.ylabel('PDF', fontsize=14)
+        axx[i].legend()
+    if len(axx) > len(dg.keys()):
+        for i, axi in enumerate(axx):
+            if i >= len(dg.keys()):
+                fig.delaxes(axi)
+    fig.supxlabel('Energy [erg]', fontsize=14)
+    fig.supylabel('CCDF', fontsize=14)
     plt.tight_layout()
     plt.savefig(resfolder + par + endname + '.pdf')
     plt.close()
