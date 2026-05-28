@@ -588,6 +588,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
         dd['log_amplitude'] = np.log10(dd['Peak amplitude'])
         dd['log_Ro'] = np.log10(dd['Ro_wright'])
         dd['log_ED'] = np.log10(dd['ED [s]'])
+        dd['log_luminosity'] = np.log10(dd['Peak luminosity [W]'])
         dd['log_fwhm'] = np.log10(dd['FWHM [min]'])
         dd.sort_values(['LCname', 'Peak time [BTJD]'], inplace=True)
         dd['waiting_time'] = dd.groupby(['ticname', 'LCname'])[ \
@@ -659,19 +660,23 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #    'log_radius', 'log_impulse', \
     #     r'$\log (R_\star/R_\odot)$', r'$\log$ Impulsiveness [min$^{-1}$]', \
     #     resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #    'log_energy', 'log_impulse', \
+    #     r'$\log$ Energy [erg]', r'$\log$ Impulsiveness [min$^{-1}$]', \
+    #     resfolder)
 
     #consecutive_flare_stats(df, dfc, resfolder)
 
     #segment_regression(pd.concat([df, dfc[complex]]), 'log_ED', resfolder, \
     #    labelx=r'$\log Ro$', labely=r'$\log$ ED', samesize=True)
-    #segment_regression(pd.concat([df, dfc[complex]]), 'rate_per_target', \
-    #                resfolder, labelx=r'$Ro$', \
-    #                labely=r'$\log$ Flares (star day)$^{-1}$')
+    segment_regression(pd.concat([df, dfc[complex]]), 'rate_per_target', \
+                    resfolder, labelx=r'$\log Ro$', \
+                    labely=r'$\log$ Flares (star day)$^{-1}$')
 
     #search_dragonking(dfc, resfolder)
     #search_dragonking(df, resfolder, endname='_distributions_allsingle')
 
-    #return
+    return
     # Separate results by spectral type
     pars = ['Energy [erg]', 'Peak amplitude', 'Duration [min]', 'FWHM [min]']
     FDpred = [1.67, 1.80, 2.0, 2.0]
@@ -845,14 +850,14 @@ def simulate_pl_size(resfolder):
     ax[0][0].set_ylabel(r'$\Delta \alpha$', fontsize=14)
     ax[0][1].plot(N, np.hstack(np.mean(yerr, axis=1)), 'ko-')
     ax[0][1].set_xlabel('Sample size', fontsize=14)
-    ax[0][1].set_ylabel(r'$\Delta x_1$', fontsize=14)
+    ax[0][1].set_ylabel(r'$\Delta \log x_1$', fontsize=14)
 
     ax[1][0].plot(q, np.hstack(np.mean(xerr, axis=1)), 'ko-')
     ax[1][0].set_xlabel(r'q', fontsize=14)
     ax[1][0].set_ylabel(r'$\Delta \alpha$', fontsize=14)
     ax[1][1].plot(q, np.hstack(np.mean(yerr, axis=1)), 'ko-')
     ax[1][1].set_xlabel(r'$q$', fontsize=14)
-    ax[1][1].set_ylabel(r'$\Delta x_1$', fontsize=14)
+    ax[1][1].set_ylabel(r'$\Delta \log x_1$', fontsize=14)
     plt.tight_layout()
     plt.show()
     set_trace()
@@ -1644,7 +1649,6 @@ def segment_regression(df, par, resfolder, labelx='', labely='', samesize=False)
                         np.diff(p)[0]))
         print('Delta BIC 2 vs 1 segment:', bic2 - bic1)
 
-        #model = np.median(models, axis=0)
         model = fit2.predict(xx)
 
         #res = lmfit.minimize(residuals_brokenpl, pfit, args=(x, y))
@@ -1652,13 +1656,14 @@ def segment_regression(df, par, resfolder, labelx='', labely='', samesize=False)
 
         #fits.append(result)
         #df_est = binsreg.binsreg(data=df[flag], x='log_Ro', y=par, noplot=True)
-        bin_edges = np.linspace(-2.5 + ift*0.1, 0.3 + ift*0.1, 20)
-        df['bins'] = pd.cut(df['log_Ro'], bins=bin_edges, include_lowest=True)
+        #bin_edges = np.linspace(-2.5 + ift*0.1, 0.3 + ift*0.1, 20)
+        lro = df[flag]['log_Ro']
+        bin_edges = np.linspace(lro.min(), lro.max(), 20)
+        df['bins'] = pd.cut(df[flag]['log_Ro'], bins=bin_edges)#, retbins=True)
         binned_stats = df[flag].groupby('bins')[par].agg(['mean', 'std'])
         bins = 0.5*(bin_edges[1:] + bin_edges[:-1])
         ax.errorbar(bins, binned_stats['mean'], yerr=binned_stats['std'], \
                     fmt='o', color=colors[ift], capsize=2)
-        #ax.plot(x, y, '.', c=colors[ift], alpha=0.1)
         ax.plot(xx, model, linewidth=2, label=ft)
 
         # Comparison with linear fit
@@ -1674,25 +1679,14 @@ def segment_regression(df, par, resfolder, labelx='', labely='', samesize=False)
 
         #print(pw_fit.summary())
 
-    #sns.jointplot(df, x='log_Ro', y='log_ED', hue='Flare type', alpha=0.5, \
-    #            kind='hist', fill=True, hue_order=ftd, \
-    #            marginal_kws=dict(fill=False, element='step'))
-
-
-   # for fi, ff in enumerate(fits):
-        #ampl = np.percentile([x['amplitude'].value for x in ff], q)
-        #x_break = np.percentile([x['x_break'].value for x in ff], q)
-        #alpha_1 = np.percentile([x['alpha_1'].value for x in ff], q)
-        #alpha_2 = np.percentile([x['alpha_2'].value for x in ff], q)
-        #model_fit = BrokenPowerLaw1D(amplitude=ampl[1], x_break=x_break[1], \
-        #            alpha_1=alpha_1[1], alpha_2=alpha_2[1])
-        #ax.loglog(xx, model_fit(xx), c=colors[fi], label=ftd[fi], linewidth=2)
-
     plt.xlabel(labelx, fontsize=14)
     plt.ylabel(labely, fontsize=14)
     plt.legend()
     plt.tight_layout()
-    plt.savefig(resfolder + par + '_vs_Ro_segmented_samesize.pdf')
+    if not samesize:
+        plt.savefig(resfolder + par + '_vs_Ro_segmented.pdf')
+    else:
+        plt.savefig(resfolder + par + '_vs_Ro_segmented_samesize.pdf')
     plt.close()
 
     return
@@ -1750,6 +1744,7 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
         x, y = fit_nm.ccdf(original_data=False)
         yth = fit_nm.power_law.ccdf()
         part1 = len(y) - 10#int(len(y)*0.9)
+        #print(len(y), part1)
         ydiff = y - yth
         #flag = ydiff[part1:] > 0.
         obs_diff, pval = permutation_test_variance_diff(ydiff[:part1], \
