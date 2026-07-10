@@ -25,8 +25,8 @@ import glob
 from tabulate import tabulate
 import seaborn as sns
 from astropy.modeling.models import BrokenPowerLaw1D
-import flare_class
-import flare_detection as fd
+#import flare_class
+#import flare_detection as fd
 import binsreg
 
 plt.ioff()
@@ -665,13 +665,13 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #     r'$\log$ Energy [erg]', r'$\log$ Impulsiveness [min$^{-1}$]', \
     #     resfolder)
 
-    #consecutive_flare_stats(df, dfc, resfolder)
+    consecutive_flare_stats(df, dfc, resfolder)
 
     #segment_regression(pd.concat([df, dfc[complex]]), 'log_ED', resfolder, \
     #    labelx=r'$\log Ro$', labely=r'$\log$ ED', samesize=True)
-    segment_regression(pd.concat([df, dfc[complex]]), 'rate_per_target', \
-                    resfolder, labelx=r'$\log Ro$', \
-                    labely=r'$\log$ Flares (star day)$^{-1}$')
+    #segment_regression(pd.concat([df, dfc[complex]]), 'rate_per_target', \
+    #                resfolder, labelx=r'$\log Ro$', \
+    #                labely=r'$\log$ Flares (star day)$^{-1}$')
 
     #search_dragonking(dfc, resfolder)
     #search_dragonking(df, resfolder, endname='_distributions_allsingle')
@@ -2206,7 +2206,7 @@ def peaks_vs_ro(df, resfolder):
 def consecutive_flare_stats(df, dfcomplex, resfolder):
 
     df.sort_values(['LCname', 'Peak time [BTJD]'], inplace=True)
-    df.reset_index(inplace=True, drop=True)
+    #df.reset_index(inplace=True, drop=True)
     dfc = df[df['Flare type'] == 'SFC']
     dfc['order'] = dfc.groupby(['LCname', 'n_event']).cumcount()
 
@@ -2215,36 +2215,49 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
     dfcomplex.sort_values(['LCname', 'Peak time [BTJD]'], inplace=True)
     dfcomplex['seq'] = dfcomplex.groupby('LCname')['n_event'].diff()
     dfi = dfcomplex[dfcomplex['seq'] == 1]
-    dfi.reset_index(inplace=True, drop=True)
+    #dfi.reset_index(inplace=True, drop=True)
 
     fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(12, 6))
     ax = ax.flatten()
     pars = ['Peak luminosity [erg s$^{-1}$]', 'Impulsiveness [min$^{-1}$]', \
             'Energy [erg]', 'Duration [min]']
-    logbins = np.logspace(-1, 3, 20)
+    logbins = np.logspace(-3, 3, 20)
     # Distributions to compare
     distribs = {}
     for m, par in enumerate(pars):
         # Start with consecutive isolated flares
         dfi['normalized_' + par] \
             = dfi.groupby(['LCname'])[par].shift(1) / dfi[par]
-        ax[m].hist(dfi['normalized_' + par], log=True, histtype='step', \
-                    label='Consecutive single-peak', \
-                    density=True, cumulative=-1, bins=logbins)
+        if m == 0:
+            label = 'Consecutive single-peak ({})'.format( \
+                    len(dfi['normalized_' + par]))
+        else:
+            label = 'Consecutive single-peak'
+        ax[m].hist(dfi['normalized_' + par], log=False, histtype='step', \
+                    label=label, \
+                    density=True, cumulative=False, bins=logbins)
 
         dfc['normalized_' + par] \
             = dfc.groupby(['LCname', 'n_event'])[par].shift(1) / df[par]
+
+        skew_i = stats.skewtest(dfi['normalized_' + par])
+        skew_c = {}
         for order in range(1, 5):
             flag = dfc['order'] == order
-            ax[m].hist(dfc['normalized_' + par][flag], log=True, histtype='step', \
-                    label='Peak no. {} to {}'.format(order + 1, order), \
-                    density=True, cumulative=-1, bins=logbins)
+            if m == 0:
+                label = 'Peak no. {} to {} ({})'.format(order + 1, order, np.sum(flag))
+            else:
+                label = 'Peak no. {} to {}'.format(order + 1, order)
+            skew_c[order] = stats.skewtest(dfc['normalized_' + par][flag])
+            ax[m].hist(dfc['normalized_' + par][flag], log=False, histtype='step', \
+                label=label, \
+                density=True, cumulative=False, bins=logbins)
         ax[m].set_xscale('log')
         ax[m].set_xlabel(par.split('[')[0] + 'ratio', fontsize=14)
-        ax[m].legend(loc='lower left')
-    fig.supylabel('CCDF', fontsize=14)
+        ax[m].legend()#loc='lower left')
+    fig.supylabel('PDF', fontsize=14)
     plt.tight_layout()
-    plt.savefig(resfolder + 'consecutive_flare_stats.pdf')
+    plt.savefig(resfolder + 'consecutive_flare_stats_PDF.pdf')
     plt.close()
 
     for par in pars:
@@ -2256,38 +2269,94 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
                 # Compare first vs second in complex with consecutive isolated
                 pval = stats.ks_2samp(dfc[par][flagm].dropna(), \
                             dfi[par].dropna()).pvalue
-                print(str(order - 1), 'vs consecutive isolated:', pval)
+                print(str(order - 1), 'vs consecutive isolated:', pval, skew_i.pvalue)
             pval = stats.ks_2samp(dfc[par][flagm].dropna(), \
             dfc[par][flag].dropna()).pvalue
-            print(str(order), 'vs', str(order - 1), ': ', pval)
+            print(str(order), 'vs', str(order - 1), ': ', pval, skew_c[order].pvalue)
 
-    dfc['Energy_consecutive [erg]'] = dfc.groupby(['LCname', \
-            'n_event'])['Energy [erg]'].shift(1).astype(float)
-    dfi['Energy_consecutive [erg]'] = dfi.groupby('LCname')[ \
-                    'Energy [erg]'].shift(1).astype(float)
-    alphas = [0.3, 1.]
-    markers = ['o', '.']
+    dfc['ED_consecutive [s]'] = dfc.groupby(['LCname', \
+            'n_event'])['ED [s]'].shift(1).astype(float)
+    dfi['ED_consecutive [s]'] = dfi.groupby('LCname')[ \
+                    'ED [s]'].shift(1).astype(float)
+    #dfc.dropna(subset='ED_consecutive [s]', inplace=True)
+    #dfi.dropna(subset='ED_consecutive [s]', inplace=True)
+
+    # Add consecutive isolated single-peak flares
+    dfsingle = dfcomplex[np.logical_and( \
+        dfcomplex['peaks_per_event'] == 1, dfcomplex['seq'] == 1)]
+    dfsingle['ED_consecutive [s]'] = dfsingle.groupby( \
+                    ['LCname'])['ED [s]'].shift(1).astype(float)
+    #dfsingle.dropna(subset='ED_consecutive [erg]', inplace=True)
+
+
+    # Add non-consecutive isolated single-peak flares
+    #flag_sep = dfcomplex['seq'] > 1
+    #flag = np.logical_and(dfcomplex['peaks_per_event'] == 1, flag_sep)
+    #dfsingle_sep = dfcomplex[flag]
+    #dfsingle_sep['Energy_consecutive [erg]'] = dfsingle_sep.groupby( \
+    #        ['LCname'])['Energy [erg]'].shift(1).astype(float)
+    #dfsingle_sep.dropna(subset='Energy_consecutive [erg]', inplace=True)
+    flag = dfcomplex['peaks_per_event'] > 0
+    dfsingle_sep = dfcomplex[flag].sample(n=5000, replace=False)
+    dfsingle_sep['ED_consecutive [s]'] = dfsingle_sep.groupby( \
+                    ['LCname'])['ED [s]'].shift(1).astype(float)
+    # Compute corr coeff for 1000 samplings
+    pr_iter = []
+    count = 0
+    for it in range(1000):
+        zz = dfcomplex[flag].sample(n=2000, replace=False)
+        zz['ED_consecutive [s]'] = zz.groupby( \
+                    ['LCname'])['ED [s]'].shift(1).astype(float)
+        ok = ~np.isnan(zz['ED_consecutive [s]'])
+        rsp = stats.spearmanr(np.log10(zz['ED [s]'][ok]), \
+                    np.log10(zz['ED_consecutive [s]'][ok]))
+        pr_iter.append(rsp[0])
+        if rsp[1] >= 0.05:
+            count += 1
+    p_value = count/1000.
+    pr_sep_mean = np.mean(pr_iter)
+    pr_sep_std = np.std(pr_iter)
+    #dfsingle_sep['Energy_consecutive [erg]'] = dfsingle_sep['Energy [erg]'].shift(1).astype(float)
+    #dfsingle_sep.dropna(subset='ED_consecutive [erg]', inplace=True)
+
+    #alphas = [0.3, 1., 0.3, 0.3]
+    #markers = ['.', '.', '.', '.']
     oks = []
     prs = []
-    labels = ['Isolated + multi-peak: ', 'Multi-peak components: ']
-    for i, dd in enumerate([dfi, dfc]):
-        ok = ~np.isnan(dd['Energy_consecutive [erg]'])
+    labels = ['Multi-peak components', 'Single + multi-peak', \
+                'Consecutive single-peak', 'Non-consecutive single-peak']
+
+    fig, axs = plt.subplots(nrows=1, ncols=4, figsize=(16, 5))
+    for i, dd in enumerate([dfc, dfi, dfsingle, dfsingle_sep]):
+        ok = ~np.isnan(dd['ED_consecutive [s]'])
         oks.append(ok)
-        pr = stats.spearmanr(dd['Energy [erg]'][ok], \
-                    dd['Energy_consecutive [erg]'][ok])
-        plt.loglog(dd['Energy [erg]'], dd['Energy_consecutive [erg]'], \
-            '.', label=labels[i] + r'$r=${:.2f}'.format(pr[0]), \
-            alpha=alphas[i])
+        if i < 3:
+            pr = stats.spearmanr(np.log10(dd['ED [s]'][ok]), \
+                        np.log10(dd['ED_consecutive [s]'][ok]))
+            axs.flat[i].loglog(dd['ED [s]'], dd['ED_consecutive [s]'], \
+                '.', label=r'$r=${:.2f} ({})'.format(pr[0], \
+                np.sum(ok)), alpha=0.3)
+            print(labels[i], 'p-value:', pr[1])
+        else:
+            axs.flat[i].loglog(dd['ED [s]'], dd['ED_consecutive [s]'], \
+                '.', label=r'$r=${:.2f} $\pm$ {:.2f}'.format( \
+                pr_sep_mean, pr_sep_std), alpha=0.3)
+            print(labels[i], 'p-value:', p_value)
+        axs.flat[i].set_title(labels[i], fontsize=14)
         prs.append(pr[0])
-    xx = np.logspace(31, 37, 1000)
-    plt.loglog(xx, xx, 'k')
-    plt.xlabel('Energy [erg]', fontsize=14)
-    plt.ylabel('Consecutive flare energy [erg]', fontsize=14)
+        xx = np.logspace(0, 3, 1000)
+        axs.flat[i].loglog(xx, xx, 'r')
+        axs.flat[i].legend(loc='lower right')
+        axs.flat[i].tick_params(axis='both', which='major', labelsize=14)
+        axs.flat[i].tick_params(axis='both', which='minor', labelsize=12)
+    fig.supxlabel('ED [s]', fontsize=16)
+    fig.supylabel('Consecutive ED [s]', fontsize=16)
     plt.legend()
     plt.tight_layout()
-    plt.savefig(resfolder + 'consecutive_flare_energy.pdf')
+    plt.savefig(resfolder + 'consecutive_flare_ED.pdf')
     plt.close()
 
+    set_trace()
     # Do the two pair distributions come from the same one?
     # Compare distance of Spearman correlation coeffcients
     T_obs = abs(prs[0] - prs[1])
