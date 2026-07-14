@@ -518,7 +518,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #df = df[~np.isnan(df['Ro_bonanno'])]
 
     # Add estimate for flare area and conversions, and other stats
-    Tspot = -3.58e-5*df['Teff [K]']**2 + 1.0188*df['Teff [K]'] + 239.3
+    Tspot = -3.58e-5*df['Teff [K]']**2 + 1.0188*df['Teff [K]'] - 239.3
     star_area = np.pi*(df['radius']*constants.R_sun.to(units.cm))**2
     Aspot = df['phot_var']*star_area*(1. - (Tspot/df['Teff [K]'])**4)**-1
     df['Aspot [Asun]'] = Aspot/sun_area
@@ -665,7 +665,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #     r'$\log$ Energy [erg]', r'$\log$ Impulsiveness [min$^{-1}$]', \
     #     resfolder)
 
-    consecutive_flare_stats(df, dfc, resfolder)
+    #consecutive_flare_stats(df, dfc, resfolder)
 
     #segment_regression(pd.concat([df, dfc[complex]]), 'log_ED', resfolder, \
     #    labelx=r'$\log Ro$', labely=r'$\log$ ED', samesize=True)
@@ -673,8 +673,8 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #                resfolder, labelx=r'$\log Ro$', \
     #                labely=r'$\log$ Flares (star day)$^{-1}$')
 
-    #search_dragonking(dfc, resfolder)
-    #search_dragonking(df, resfolder, endname='_distributions_allsingle')
+    search_dragonking(dfc, resfolder)
+    search_dragonking(df, resfolder, endname='_distributions_allsingle')
 
     return
     # Separate results by spectral type
@@ -1079,6 +1079,7 @@ def simple_complex_fit(df1, df2, df3, par1, par2, label_par1, label_par2, \
         bins = 0.5*(bin_edges[1:] + bin_edges[:-1])
         ax.errorbar(bins, binned_stats['mean'], yerr=binned_stats['std'], \
                     fmt='o', color=colors[i], capsize=2)
+
     #sns.scatterplot(dftemp, x=par1, y=par2, hue='Flare type', \
     #        alpha=0.5, palette='colorblind', s=10, style='Flare type')
 
@@ -1109,7 +1110,7 @@ def simple_complex_fit(df1, df2, df3, par1, par2, label_par1, label_par2, \
             meds.append(percs[1])
         xTh = np.linspace(x.min(), x.max(), 100)
         ax.plot(xTh, np.polyval(meds, xTh), color=colors[i], label=labels[i])
-
+        #ax.plot(x, y, '.')
         # BIC, assuming uniform uncertainties and two free parameters
         # nvarys = 2
         # omc = y - np.polyval(meds, x)
@@ -1128,6 +1129,8 @@ def simple_complex_fit(df1, df2, df3, par1, par2, label_par1, label_par2, \
     #plt.xlim(dftemp[par1].min() - 0.05, dftemp[par1].max() + 0.05)
     #plt.ylim(dftemp[par2].min() - 0.05, dftemp[par2].max() + 0.05)
     plt.tight_layout()
+    plt.show()
+    set_trace()
     plt.savefig(resfolder + par2.split(' [')[0] + '_vs_' + par1 + '.pdf')
     plt.close()
 
@@ -1616,7 +1619,7 @@ def segment_regression(df, par, resfolder, labelx='', labely='', samesize=False)
         # Bootstrap
         rng = np.random.default_rng()
         result, models = [], []
-        for j in range(1000):
+        for j in range(10):
             if j % 100 == 0:
                 print(j)
             if not samesize:
@@ -1658,10 +1661,12 @@ def segment_regression(df, par, resfolder, labelx='', labely='', samesize=False)
         #df_est = binsreg.binsreg(data=df[flag], x='log_Ro', y=par, noplot=True)
         #bin_edges = np.linspace(-2.5 + ift*0.1, 0.3 + ift*0.1, 20)
         lro = df[flag]['log_Ro']
-        bin_edges = np.linspace(lro.min(), lro.max(), 20)
+        bin_edges = np.linspace(lro.min(), lro.max(), 15)
         df['bins'] = pd.cut(df[flag]['log_Ro'], bins=bin_edges)#, retbins=True)
         binned_stats = df[flag].groupby('bins')[par].agg(['mean', 'std'])
         bins = 0.5*(bin_edges[1:] + bin_edges[:-1])
+
+        #ax.plot(x, y, '.')
         ax.errorbar(bins, binned_stats['mean'], yerr=binned_stats['std'], \
                     fmt='o', color=colors[ift], capsize=2)
         ax.plot(xx, model, linewidth=2, label=ft)
@@ -1859,7 +1864,8 @@ def waiting_time_distribution(df, resfolder, fltypes, lab, set_logbins=None, \
         else:
             logbins = np.logspace(np.log10(bins[0]),np.log10(bins[-1]), len(bins))
         yy = ax_wt.hist(distrib, bins=logbins, log=True, density=pdf, \
-                    histtype='step', color=ccs[i], label=ro_i + label)
+                    histtype='step', color=ccs[i], label=ro_i + label \
+                    + r' ($c={:.2f}$)'.format(fit_ew[1]))
         if yy[0].max() > ymax:
             ymax = yy[0].max()
         xth = lambda a, x: stats.exponweib.ppf(a, x[0], x[1], loc=x[2], \
@@ -2084,7 +2090,7 @@ def energy_spotarea(df, resfolder):
     ax.set_xlabel(r'Spotted area [$A_\odot$]', fontsize=14)
     ax.set_ylabel('Energy [erg]', fontsize=14)
     ax.set_ylim(6e27, 2e37)
-    #ax.set_xlim(6e-6, 0.5)
+    ax.set_xlim(8e-6, 0.9)
     plt.savefig(resfolder + 'energy_vs_ffactor.pdf')
     plt.close('all')
 
