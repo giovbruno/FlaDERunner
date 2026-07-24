@@ -18,6 +18,7 @@ from astropy import units
 import pandas as pd
 import os
 import seaborn as sns
+import multiprocessing
 from pdb import set_trace
 
 def model_LC(sigma, Prot, Q0, dQ, noise, f=0.5, tmax=28., deltat=20./86400., \
@@ -67,7 +68,7 @@ def generate_LCs(folder_out, plots=False, observed=[]):
         # Flare parameter grid
         flares_per_lc = np.random.randint(low=5, high=30)
         tpeak = np.random.uniform(low=0., high=28., size=flares_per_lc)
-        fwhm = loguniform.rvs(a=20./86400., b=1./24., size=flares_per_lc)
+        fwhm = loguniform.rvs(a=20./86400., b=5./24., size=flares_per_lc)
         ampl = loguniform.rvs(a=1e-4, b=1.0, size=flares_per_lc)
 
         y = np.copy(y_quiet)
@@ -153,39 +154,47 @@ def generate_LCs(folder_out, plots=False, observed=[]):
 
     return
 
-def analyse_LCs(folderin, indices=[]):
+def run_LCs(LC, saveresfolder):
 
+        fout_str = saveresfolder + LC.split('/')[-1].replace( \
+                            '.pic', '_results.pic')
+
+        # To start from an uncompleted session
+        if os.path.isfile(fout_str):
+            return
+        print(LC)
+        data = pickle.load(open(LC, 'rb'))
+        t = np.arange(data['t'][0], data['t'][1] + data['t'][2], \
+                    data['t'][2])
+        y = data['y']
+        yerr = np.zeros(len(t)) + data['stellar_pars']['values'][-1]
+        saveresfile = saveresfolder + LC.split('/')[-1]
+
+        try:
+            flarespar, flaresflag = analyse_LC([t, y, yerr], saveresfile, \
+                    verbose=False)
+            fout = open(fout_str, 'wb')
+            pickle.dump(flarespar, fout)
+            fout.close()
+        except TypeError:
+            print('Problematic LC:', LC)
+
+        return
+
+def flare_recovery(folderin):
     plt.ioff()
 
     saveresfolder = folderin.replace('simulated_LCs', 'simulated_analysis')
 
     datadir = '/home/giovanni/Projects/data'
     throughput_folder = datadir + '/filters/'
-    wth, fth = np.loadtxt(throughput_folder + 'TESS_TESS.Red.dat', unpack=True)
 
     LCs = glob.glob(folderin + '*pic')
-    LCs = np.sort(LCs)
-    print('Analysing', len(LCs), 'simulated light curves...')
-    for LC_i, LC in enumerate(LCs[indices]):
-        fout_str = saveresfolder + LC.split('/')[-1].replace( \
-                        '.pic', '_results.pic')
-        # To start from an uncompleted session
-        if os.path.isfile(fout_str):
-            continue
-        print(LC_i, LC)
-        data = pickle.load(open(LC, 'rb'))
-        t = np.arange(data['t'][0], data['t'][1] + data['t'][2], data['t'][2])
-        y = data['y']
-        yerr = np.zeros(len(t)) + data['stellar_pars']['values'][-1]
-        saveresfile = saveresfolder + LC.split('/')[-1]
-        try:
-            flarespar, flaresflag = analyse_LC([t, y, yerr], saveresfile, \
-                    wth*units.AA, fth)
-            fout = open(fout_str, 'wb')
-            pickle.dump(flarespar, fout)
-            fout.close()
-        except TypeError:
-            print('Problematic LC:', LC)
+
+    num_cores = multiprocessing.cpu_count()
+    with multiprocessing.Pool(processes=num_cores) as pool:
+        pars = [(LC, saveresfolder) for LC in LCs]
+        results = pool.starmap(run_LCs, pars)
 
     return
 

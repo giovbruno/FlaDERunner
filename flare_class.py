@@ -19,7 +19,7 @@ from astropy import timeseries
 from corner import corner
 import copy
 import models
-import stopit
+#import stopit
 from pdb import set_trace
 
 daytomin = 24*60.
@@ -280,34 +280,34 @@ class flare:
                    burn=1000*self.npeaks, \
                    is_weighted=True, nan_policy='omit', progress=True)
                 self.result_nodip.params_emcee = result.params
-            elif type(uncertainties) == str and uncertainties == 'Ftest':
-                if verbose:
-                    print('--> Estimating uncertainties via F-test...')
-                vnames = [el for el in X.var_names if el not in ['d', 'e', 'f', \
-                        'Gdip', 'x0' ,'w1', 'w2', 'n'] and 'tpeak' not in el]
-                try:
-                    # Abort in case this takes too long
-                    with stopit.ThreadingTimeout(60) as context_manager:
-                        ci, trace = lmfit.conf_interval(self.saved_mini, X, \
-                          sigmas=[1, 2], p_names=vnames, trace=True, maxiter=200)
-
-                    if context_manager.state == context_manager.EXECUTED:
-                        lmfit.printfuncs.report_ci(ci)
-                        self.result_nodip.params_Ftest = [ci, trace]
-                    elif context_manager.state == context_manager.TIMED_OUT:
-                        msg = 'F-test required too long. Using LM uncertainties'
-                        print(msg)
-                        self.result_nodip.params_Ftest = msg
-                except lmfit.minimizer.MinimizerException:
-                    msg = 'F-test failed. Using LM uncertainties'
-                    print(msg)
-                    self.result_nodip.params_Ftest = msg
-                    pass
-                except ValueError:
-                    msg = 'F-test raised a ValueError. Using LM uncertainties'
-                    print(msg)
-                    self.result_nodip.params_Ftest = msg
-                    pass
+            #elif type(uncertainties) == str and uncertainties == 'Ftest':
+            #    if verbose:
+            #        print('--> Estimating uncertainties via F-test...')
+            #    vnames = [el for el in X.var_names if el not in ['d', 'e', 'f', \
+            #            'Gdip', 'x0' ,'w1', 'w2', 'n'] and 'tpeak' not in el]
+            #    try:
+            #        # Abort in case this takes too long
+            #        with stopit.ThreadingTimeout(60) as context_manager:
+            #            ci, trace = lmfit.conf_interval(self.saved_mini, X, \
+            #              sigmas=[1, 2], p_names=vnames, trace=True, maxiter=200)
+            #
+            #        if context_manager.state == context_manager.EXECUTED:
+            #            lmfit.printfuncs.report_ci(ci)
+            #            self.result_nodip.params_Ftest = [ci, trace]
+            #        elif context_manager.state == context_manager.TIMED_OUT:
+            #            msg = 'F-test required too long. Using LM uncertainties'
+            #            print(msg)
+            #            self.result_nodip.params_Ftest = msg
+            #    except lmfit.minimizer.MinimizerException:
+            #        msg = 'F-test failed. Using LM uncertainties'
+            #        print(msg)
+            #        self.result_nodip.params_Ftest = msg
+            #        pass
+            #    except ValueError:
+            #        msg = 'F-test raised a ValueError. Using LM uncertainties'
+            #        print(msg)
+            #        self.result_nodip.params_Ftest = msg
+            #        pass
             elif type(uncertainties) == int:
                 if verbose:
                     print('--> Estimating uncertainties via bootstrap...')
@@ -417,11 +417,11 @@ class flare:
                 if type(uncertainties) == str and uncertainties == 'emcee':
                     print(lmfit.report_fit(self.result_nodip.params_emcee))
                     bestpar = self.result_nodip.params_emcee
-                elif type(uncertainties) == str and uncertainties == 'F-test':
-                    lmfit.printfuncs.report_ci(ci)
-                    bestpar = lmfit.Parameters()
-                    for p in ci.keys():
-                        bestpar.add(p, value=ci[p][3][1])
+                #elif type(uncertainties) == str and uncertainties == 'F-test':
+                #    lmfit.printfuncs.report_ci(ci)
+                #    bestpar = lmfit.Parameters()
+                #    for p in ci.keys():
+                #        bestpar.add(p, value=ci[p][3][1])
                 elif type(uncertainties) == int:
                     bestpar = lmfit.Parameters()
                     print('\nLM result:\n')

@@ -108,7 +108,8 @@ def find_flares(lcfile, flatten=True, \
     if flatten:
         yf, yferr, ls_quiet, rednoise, header, tck = flatten_LC( \
                 t, y, yerr, plots=False, mode='smooth', \
-                header=header, savefile='', compute_rednoise=True)
+                header=header, savefile='', compute_rednoise=True, \
+                verbose=verbose)
     else:
         yf, yferr = np.zeros(len(t)), np.zeros(len(t)) + np.median(yerr)
         freq, power = [], []
@@ -144,7 +145,8 @@ def find_flares(lcfile, flatten=True, \
     if peaki == []:
         peaki = list(peakut.indexes(yflat, thres=flare_threshold*noiselev, \
                         min_dist=10, thres_abs=True))
-    print('Detected peaks #1:', len(peaki))
+    if verbose:
+        print('Detected peaks #1:', len(peaki))
 
     # If no flares are found, there's no point in repeating these steps
     if flatten and len(peaki) > 0:
@@ -160,7 +162,7 @@ def find_flares(lcfile, flatten=True, \
         yf, yferr, ls_quiet, _, header, tck = flatten_LC( \
                 t, y, yerr, plots=False, mode='smooth', \
                 compute_rednoise=False, header=header, savefile='', \
-                flare_ranges=flare_ranges, upper_freq=3.)
+                flare_ranges=flare_ranges, upper_freq=3., verbose=verbose)
 
         yflat = y - yf
         noiselev = np.median(yferr)
@@ -168,7 +170,8 @@ def find_flares(lcfile, flatten=True, \
         # Update peak detection
         peaki = list(peakut.indexes(yflat, thres=flare_threshold*noiselev, \
                         min_dist=10, thres_abs=True))
-        print('Detected peaks #2:', len(peaki))
+        if verbose:
+            print('Detected peaks #2:', len(peaki))
 
     # Plot flattended LC
     if plot_flat:
@@ -443,7 +446,7 @@ def flare_analysis(t, yflat, yerr, peaki, noise_level, ls_quiet, \
 
 def flatten_LC(t, f, ferr, plots=False, mode='smooth', compute_rednoise=True, \
             savefile='', header=None, flare_ranges=[], upper_freq=None, \
-            window_h=10.):
+            window_h=10., verbose=True):
     '''
     Find a smoothed verision of the LC, removing flares through iterative
     sigma-clipping
@@ -451,7 +454,8 @@ def flatten_LC(t, f, ferr, plots=False, mode='smooth', compute_rednoise=True, \
     window_h: duration of the time window for smoothing, in hours.
     '''
 
-    print('Flattening light curve...')
+    if verbose:
+        print('Flattening light curve...')
 
     if len(flare_ranges) > 0:
         arrflag = [np.arange(fr[0], fr[1] + 1) for fr in flare_ranges]

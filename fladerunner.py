@@ -25,8 +25,8 @@ import glob
 from tabulate import tabulate
 import seaborn as sns
 from astropy.modeling.models import BrokenPowerLaw1D
-#import flare_class
-#import flare_detection as fd
+import flare_class
+import flare_detection as fd
 import binsreg
 
 plt.ioff()
@@ -58,7 +58,8 @@ def call_LC(LC, saveresfolder):
 
     return
 
-def analyse_LC(LC, saveresfolder, wth, fth, flare_threshold=4., rebin=0):
+def analyse_LC(LC, saveresfolder, flare_threshold=4., rebin=0, \
+            verbose=True):
     '''
     Look for flares and dips on a single LC.
     '''
@@ -68,7 +69,7 @@ def analyse_LC(LC, saveresfolder, wth, fth, flare_threshold=4., rebin=0):
         flare_threshold=flare_threshold, flatten=True, plot_flat=False, \
         saveplots=saveresfolder, normalise=True, \
         fit_continuum=1, complexity=5, clip=True, \
-        rebin=rebin, verbose=True, filt_kernel_size=11)
+        rebin=rebin, verbose=verbose, filt_kernel_size=11)
 
     return flarespar, flaresflag
 
@@ -677,6 +678,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     search_dragonking(df, resfolder, endname='_distributions_allsingle')
 
     return
+
     # Separate results by spectral type
     pars = ['Energy [erg]', 'Peak amplitude', 'Duration [min]', 'FWHM [min]']
     FDpred = [1.67, 1.80, 2.0, 2.0]
@@ -732,7 +734,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
             else:
                 target_pars_complex2 = copy.deepcopy(target_pars)
                 target_dist_complex2 = copy.deepcopy(target_dist)
-
+        set_trace()
         plot_target_results(target_pars_simple, target_pars_complex, \
             target_dist_simple, target_dist_complex, \
             par, sptype, stellar_pars, stpar_labels, min_flares, \
@@ -740,8 +742,6 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
             target_pars3=target_pars_complex2)
 
         plt.close('all')
-
-    set_trace()
 
     return
 
@@ -1708,7 +1708,7 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
     dfc.sort_values(by='ticname', inplace=True)
     dg = dfc.groupby(['ticname', 'Spectral type']).size()
     dg = dg[dg >= min_flares]
-    print('Targets for DK events search:')
+    print('Targets for DK events search:', endname)
     print(dg)
 
     dg = dfc.groupby(['ticname']).size()
