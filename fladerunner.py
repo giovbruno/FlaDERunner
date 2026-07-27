@@ -275,7 +275,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
         'impulsive_ED_fraction', 't12', 'total_duration', 'Teff [K]', 'logg', \
         'feh', 'radius', 'phot_var', 'CaII_IRT', 'tessmag', 'Prot', 'FAP', \
         'distance', 'redchi2', 'ticname', 'ra', 'dec', 'scatter_SN', \
-        'dist_from_xmm', 'E_B-V']
+        'dist_from_xmm', 'E_B-V', 'efolding_time', 'total_efolding']
     for band in ['6', '7', '8']:
         parameters.append('FLUX_B' + band)
         parameters.append('FLUX_B' + band + '_ERR')
@@ -358,11 +358,16 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
                             + flare.result_nodip.params_LM['tpeak' + str(n)].value)
                         params_s['Duration [min]'].append( \
                                 flare.get_single_duration(n).to(units.min).value)
+                        params_s['efolding_time'].append( \
+                                flare.get_single_efolding(n).to(units.min).value)
 
                         # This is data-driven, so it shouldn't change with
                         # injection tests
                         params_s['total_duration'].append( \
                                 flare.tend - flare.tbeg)
+                        params_s['total_efolding'].append( \
+                            flare.get_total_efolding(flare.result_nodip).to( \
+                                units.min).value)
                         params_s['t12'].append(flare.t12.value*24*60.)
                         params_s['FWHM [min]'].append(24.*60.
                            *flare.result_nodip.params_LM['fwhm' + str(n)].value)
@@ -595,7 +600,6 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
         dd['waiting_time'] = dd.groupby(['ticname', 'LCname'])[ \
                             'Peak time [BTJD]'].diff()*24.*60.
         # Flare rate per target
-
         dd['flares_per_target'] = dd.groupby(['ticname', 'Flare type']).transform( \
                                 'size').astype('float')
         dd['time_on_target'] = dd.groupby('ticname')['LCname'].transform( \
@@ -604,6 +608,8 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
         mass_bins = [0., 0.35, np.inf]
         dd['mass_bins'] = pd.cut(dd['mass'], bins=mass_bins, \
                     labels=[r'$M \leq 0.35~M_\odot$', r'$M > 0.35~M_\odot$'])
+        df['log_efolding_time'] = np.log10(df['efolding_time'].astype(float))
+        df['log_total_efolding'] = np.log10(df['total_efolding'].astype(float))
 
     # Filter non-flaring stars too
     nfl = get_non_flaring_stars(resfolder, maxT, maxR, maxTmag, maxProt, maxFAP)
@@ -611,7 +617,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
                 'TESSMAG':'tessmag'}, inplace=True)
     flagT = filter_df(nfl, maxT, maxR, maxProt, maxFAP, maxTmag, massrange)
     nfl = nfl[flagT]
-
+    set_trace()
     ### Trends
     #Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder)
 
@@ -639,32 +645,36 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #wt_diff(saveres_sym, saveres_compl, 'model_residuals', resfolder)
 
     ### Fits with stellar parameters (all in log quantities)
-    #simple_complex_fit(df[single], df[~single], dfc[complex], \
-    #        'log_radius', 'log_energy', \
-    #        r'$\log (R_\star/R_\odot)$', r'$\log$ Energy [erg]', resfolder)
-    #simple_complex_fit(df[single], df[~single], dfc[complex], \
-    #        'logg', 'log_duration', \
-    #        r'$\log g$', r'$\log$ Duration [min]', resfolder)
-    #simple_complex_fit(df[single], df[~single], dfc[complex], \
-    #        'logg', 'log_impulse', \
-    #       r'$\log g$', r'$\log$ Impulsiveness [min$^{-1}$]', resfolder)
-    #simple_complex_fit(df[single], df[~single], dfc[complex], \
-    #        'log_energy', 'log_fwhm', \
-    #        r'$\log$ Energy [erg]', r'$\log$ FWHM [min]', resfolder)
-    #simple_complex_fit(df[single], df[~single], dfc[complex], \
-    #        'logg', 'log_amplitude', \
-    #        r'$\log g$', r'$\log$ Amplitude', resfolder)
-    #simple_complex_fit(df[single], df[~single], dfc[complex], \
-    #        'logg', 'log_fwhm', \
-    #        r'$\log g$', r'$\log$ FWHM', resfolder)
-    #simple_complex_fit(df[single], df[~single], dfc[complex], \
-    #    'log_radius', 'log_impulse', \
-    #     r'$\log (R_\star/R_\odot)$', r'$\log$ Impulsiveness [min$^{-1}$]', \
-    #     resfolder)
-    #simple_complex_fit(df[single], df[~single], dfc[complex], \
-    #    'log_energy', 'log_impulse', \
-    #     r'$\log$ Energy [erg]', r'$\log$ Impulsiveness [min$^{-1}$]', \
-    #     resfolder)
+    simple_complex_fit(df[single], df[~single], dfc[complex], \
+            'log_radius', 'log_energy', \
+            r'$\log (R_\star/R_\odot)$', r'$\log$ Energy [erg]', resfolder)
+    simple_complex_fit(df[single], df[~single], dfc[complex], \
+            'logg', 'log_duration', \
+            r'$\log g$', r'$\log$ Duration [min]', resfolder)
+    simple_complex_fit(df[single], df[~single], dfc[complex], \
+            'logg', 'log_impulse', \
+           r'$\log g$', r'$\log$ Impulsiveness [min$^{-1}$]', resfolder)
+    simple_complex_fit(df[single], df[~single], dfc[complex], \
+            'log_energy', 'log_fwhm', \
+            r'$\log$ Energy [erg]', r'$\log$ FWHM [min]', resfolder)
+    simple_complex_fit(df[single], df[~single], dfc[complex], \
+            'logg', 'log_amplitude', \
+            r'$\log g$', r'$\log$ Amplitude', resfolder)
+    simple_complex_fit(df[single], df[~single], dfc[complex], \
+            'logg', 'log_fwhm', \
+            r'$\log g$', r'$\log$ FWHM', resfolder)
+    simple_complex_fit(df[single], df[~single], dfc[complex], \
+        'log_radius', 'log_impulse', \
+         r'$\log (R_\star/R_\odot)$', r'$\log$ Impulsiveness [min$^{-1}$]', \
+         resfolder)
+    simple_complex_fit(df[single], df[~single], dfc[complex], \
+        'log_energy', 'log_impulse', \
+         r'$\log$ Energy [erg]', r'$\log$ Impulsiveness [min$^{-1}$]', \
+         resfolder)
+    simple_complex_fit(df[single], df[~single], dfc[complex], \
+        'log_energy', 'log_duration', \
+         r'$\log$ Energy [erg]', r'$\log$ Duration [min]', \
+         resfolder)
 
     #consecutive_flare_stats(df, dfc, resfolder)
 
@@ -674,8 +684,8 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #                resfolder, labelx=r'$\log Ro$', \
     #                labely=r'$\log$ Flares (star day)$^{-1}$')
 
-    search_dragonking(dfc, resfolder)
-    search_dragonking(df, resfolder, endname='_distributions_allsingle')
+    #search_dragonking(dfc, resfolder)
+    #search_dragonking(df, resfolder, endname='_distributions_allsingle')
 
     return
 
@@ -1068,6 +1078,7 @@ def simple_complex_fit(df1, df2, df3, par1, par2, label_par1, label_par2, \
     colors = ['royalblue', 'orange', 'g']
 
     dftemp = pd.concat([df1, df2, df3])
+
     #sns.jointplot(dftemp, x=par1, y=par2, hue='Flare type', kind='hist', \
     #        alpha=0.5, palette='colorblind', \
     #        marginal_kws=dict(fill=False, element='step'))
@@ -1129,8 +1140,6 @@ def simple_complex_fit(df1, df2, df3, par1, par2, label_par1, label_par2, \
     #plt.xlim(dftemp[par1].min() - 0.05, dftemp[par1].max() + 0.05)
     #plt.ylim(dftemp[par2].min() - 0.05, dftemp[par2].max() + 0.05)
     plt.tight_layout()
-    plt.show()
-    set_trace()
     plt.savefig(resfolder + par2.split(' [')[0] + '_vs_' + par1 + '.pdf')
     plt.close()
 

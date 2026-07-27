@@ -665,6 +665,33 @@ class flare:
             tunit = tt.unit
             return 0.*tunit
 
+    def get_single_efolding(self, n, double_t=True):
+        '''
+        Get the e-folding time for a flare model profile.
+        '''
+        tt, thisflare = self.get_single_profile(n, double_t=double_t)
+
+        tpeak = thisflare.argmax()
+        decrease = thisflare[tpeak:]
+        epeak = thisflare.max()/np.e
+        te = np.argmin(abs(decrease - epeak))
+        efolding_time = tt[tpeak + te] - tt[tpeak]
+
+        return efolding_time
+
+    def get_total_efolding(self, result, double_t=True):
+
+        tt = self.tdata
+        thisflare = self.get_full_profile(result)
+
+        tpeak = thisflare.argmax()
+        decrease = thisflare[tpeak:]
+        epeak = thisflare.max()/np.e
+        te = np.argmin(abs(decrease - epeak))
+        efolding_time = tt[tpeak + te] - tt[tpeak]
+
+        return efolding_time
+
     def plot_models(self, plot_instance=None, mode='mendoza', \
             title='', showplot=False, plot_LS=False, plot_raw_flux=False, \
             plot_dip=True, plot_cme=True, figsize=(13, 5)):
