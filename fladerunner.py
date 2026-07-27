@@ -608,8 +608,12 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
         mass_bins = [0., 0.35, np.inf]
         dd['mass_bins'] = pd.cut(dd['mass'], bins=mass_bins, \
                     labels=[r'$M \leq 0.35~M_\odot$', r'$M > 0.35~M_\odot$'])
-        df['log_efolding_time'] = np.log10(df['efolding_time'].astype(float))
-        df['log_total_efolding'] = np.log10(df['total_efolding'].astype(float))
+        dd['log_efolding_time'] = np.log10(dd['efolding_time'].astype(float))
+
+    flag = np.isinf(df['log_efolding_time'])
+    df = df[~flag]
+    flag = np.isinf(dfc['log_efolding_time'])
+    dfc = dfc[~flag]
 
     # Filter non-flaring stars too
     nfl = get_non_flaring_stars(resfolder, maxT, maxR, maxTmag, maxProt, maxFAP)
@@ -617,7 +621,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
                 'TESSMAG':'tessmag'}, inplace=True)
     flagT = filter_df(nfl, maxT, maxR, maxProt, maxFAP, maxTmag, massrange)
     nfl = nfl[flagT]
-    set_trace()
+
     ### Trends
     #Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder)
 
@@ -674,6 +678,11 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     simple_complex_fit(df[single], df[~single], dfc[complex], \
         'log_energy', 'log_duration', \
          r'$\log$ Energy [erg]', r'$\log$ Duration [min]', \
+         resfolder)
+
+    simple_complex_fit(df[single], df[~single], dfc[complex], \
+        'log_energy', 'log_efolding_time', \
+         r'$\log$ Energy [erg]', r'$\log e$-folding time [min]', \
          resfolder)
 
     #consecutive_flare_stats(df, dfc, resfolder)
@@ -2569,6 +2578,10 @@ def condense_flare_cascades(df, resfolder):
         dfc.drop(columns='Duration [min]', inplace=True)
         dfc.rename(columns={'total_duration':'Duration [min]'}, inplace=True)
         dfc['Duration [min]'] *= 24.*60.
+        dfc.drop(columns='efolding_time', inplace=True)
+        dfc.rename(columns={'total_efolding':'efolding_time'}, \
+                        inplace=True)
+
         dfc.drop(columns='FWHM [min]', inplace=True)
         dfc.rename(columns={'t12':'FWHM [min]'}, inplace=True)
         group_cols = ['LCname', 'n_event']
