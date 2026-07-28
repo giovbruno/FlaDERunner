@@ -622,6 +622,19 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     flagT = filter_df(nfl, maxT, maxR, maxProt, maxFAP, maxTmag, massrange)
     nfl = nfl[flagT]
 
+    # For publication
+    psave = ['ticname', 'designation', 'LCname', 'Peak amplitude', \
+        'Peak luminosity [erg s$^{-1}$]', 'Duration [min]', \
+        'efolding_time', 'FWHM [min]', 'Energy [erg]', 'ED [s]', \
+        'Peak time [BTJD]', 'Impulsiveness [min$^{-1}$]', \
+        'n_event', 't12', 'redchi2', 'total_efolding', \
+        'peaks_per_event', 'Flare type', 'waiting_time', \
+        'Teff [K]', 'logg', 'feh', 'radius', 'phot_var', 'tessmag', \
+        'Prot', 'FAP', 'distance', 'E_B-V',  'scatter_SN', , 'Aspot [Asun]', 'Aspot_mean [Asun]', 'Spectral type', 'mass', \
+        'tau_conv_wright', 'Ro_wright',  'flares_per_target',
+        'time_on_target', 'rate_per_target']
+    #
+
     ### Trends
     #Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder)
 
@@ -649,42 +662,40 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #wt_diff(saveres_sym, saveres_compl, 'model_residuals', resfolder)
 
     ### Fits with stellar parameters (all in log quantities)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-            'log_radius', 'log_energy', \
-            r'$\log (R_\star/R_\odot)$', r'$\log$ Energy [erg]', resfolder)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-            'logg', 'log_duration', \
-            r'$\log g$', r'$\log$ Duration [min]', resfolder)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-            'logg', 'log_impulse', \
-           r'$\log g$', r'$\log$ Impulsiveness [min$^{-1}$]', resfolder)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-            'log_energy', 'log_fwhm', \
-            r'$\log$ Energy [erg]', r'$\log$ FWHM [min]', resfolder)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-            'logg', 'log_amplitude', \
-            r'$\log g$', r'$\log$ Amplitude', resfolder)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-            'logg', 'log_fwhm', \
-            r'$\log g$', r'$\log$ FWHM', resfolder)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-        'log_radius', 'log_impulse', \
-         r'$\log (R_\star/R_\odot)$', r'$\log$ Impulsiveness [min$^{-1}$]', \
-         resfolder)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-        'log_energy', 'log_impulse', \
-         r'$\log$ Energy [erg]', r'$\log$ Impulsiveness [min$^{-1}$]', \
-         resfolder)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-        'log_energy', 'log_duration', \
-         r'$\log$ Energy [erg]', r'$\log$ Duration [min]', \
-         resfolder)
-
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-        'log_energy', 'log_efolding_time', \
-         r'$\log$ Energy [erg]', r'$\log e$-folding time [min]', \
-         resfolder)
-
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #        'log_radius', 'log_energy', \
+    #        r'$\log R_\star~[R_\odot]$', r'$\log$ Energy [erg]', resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #        'logg', 'log_duration', \
+    #        r'$\log g$', r'$\log$ Duration [min]', resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #        'logg', 'log_impulse', \
+    #       r'$\log g$', r'$\log$ Impulsiveness [min$^{-1}$]', resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #        'log_energy', 'log_fwhm', \
+    #        r'$\log$ Energy [erg]', r'$\log$ FWHM [min]', resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #        'logg', 'log_amplitude', \
+    #        r'$\log g$', r'$\log$ Amplitude', resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #        'logg', 'log_fwhm', \
+    #        r'$\log g$', r'$\log$ FWHM', resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #    'log_radius', 'log_impulse', \
+    #     r'$\log (R_\star/R_\odot)$', r'$\log$ Impulsiveness [min$^{-1}$]', \
+    #     resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #    'log_energy', 'log_impulse', \
+    #     r'$\log$ Energy [erg]', r'$\log$ Impulsiveness [min$^{-1}$]', \
+    #     resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #    'log_energy', 'log_duration', \
+    #     r'$\log$ Energy [erg]', r'$\log$ Duration [min]', \
+    #     resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #    'log_energy', 'log_efolding_time', \
+    #     r'$\log$ Energy [erg]', r'$\log e$-folding time [min]', \
+    #     resfolder)
     #consecutive_flare_stats(df, dfc, resfolder)
 
     #segment_regression(pd.concat([df, dfc[complex]]), 'log_ED', resfolder, \
@@ -753,7 +764,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
             else:
                 target_pars_complex2 = copy.deepcopy(target_pars)
                 target_dist_complex2 = copy.deepcopy(target_dist)
-        set_trace()
+
         plot_target_results(target_pars_simple, target_pars_complex, \
             target_dist_simple, target_dist_complex, \
             par, sptype, stellar_pars, stpar_labels, min_flares, \
@@ -853,6 +864,7 @@ def simulate_pl_size(resfolder):
         q.append(perc3[1] - perc2[1])
 
     fig, ax = plt.subplots()
+    ax.plot([30], [1.8], 'kx', markersize=10)
     sc = ax.scatter(xx, yy, s=N, c=q)
     for xy in range(len(xx)):
         ax.text(xx[xy], yy[xy], N[xy])
@@ -878,8 +890,6 @@ def simulate_pl_size(resfolder):
     ax[1][1].set_xlabel(r'$q$', fontsize=14)
     ax[1][1].set_ylabel(r'$\Delta \log x_1$', fontsize=14)
     plt.tight_layout()
-    plt.show()
-    set_trace()
     plt.savefig(resfolder + 'PL_sample_size.pdf')
     plt.close()
 
@@ -952,7 +962,7 @@ def complex_flare_fraction(df, resfolder):
 
     return
 
-def monte_carlo_permutation(x_obs, y_obs, sigma_y, n_mc=1000, n_perm=1000):
+def monte_carlo_permutation(x_obs, y_obs, sigma_y, n_mc=1000, n_perm=10):
     '''
     Simulate many data sets within uncertainties and for each derive a
     Spearman correlation coefficient with its p-value.
@@ -1401,8 +1411,15 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
             ax4.plot([0.1, 4.], [th, th], 'k--', label='FD SOC prediction')
         ax4.plot(xTh, np.polyval(fitpars, xTh), c=colors[tpi])#, label='$p$' + pv)
         ax4.set_xlabel(r'$q$', fontsize=14)
-        ax4.set_ylabel(par.split('[')[0] + r' $\alpha$', fontsize=14)
+        if 'Energy' in par:
+            ll = r' $\alpha_\mathrm{E}$'
+        elif 'amplitude' in par:
+            ll = r' $\alpha_\mathrm{F}$'
+        elif 'Duration' in par:
+            ll = r' $\alpha_\mathrm{d}$'
+        ax4.set_ylabel(par.split('[')[0] + ll, fontsize=14)
         ax4.set_xlim(ax4min - 0.1, ax4max + 0.1)
+        #ax4.set_xlim(0.5, 2.8)
         fig4.tight_layout()
 
         # Print estimate
@@ -2043,10 +2060,10 @@ def energy_spotarea(df, resfolder):
 
     f = 0.1
     AspotTh = np.logspace(-5., -0.25)*sun_area
-    ypos = [10**28.95/4., 10**29.55/5., 10**30.05/4., 10**30.65/4., 10**31.25/3., \
+    ypos = [10**28.65/4., 10**29.55/5., 10**30.05/4., 10**30.65/4., 10**31.25/3., \
                 10**31.85/3., 10**32.45/3.]
     fig, ax = plt.subplots()
-    for Bi, B in enumerate([30, 50, 100, 200, 500, 1000, 2000]): # B in Gauss
+    for Bi, B in enumerate([20, 50, 100, 200, 500, 1000, 2000]): # B in Gauss
         Eflare = 7e32*(f/0.1)*(B/1e3)**2*(AspotTh/(2.*sun_area)/1e-3)**1.5
         ax.loglog(AspotTh/sun_area, Eflare, 'k')
         ax.text(10**-3.8, ypos[Bi], str(B) + ' G', rotation=32)
@@ -2174,8 +2191,10 @@ def Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder):
     #df_tot['Ro_bins'] = pd.cut(df_tot['Ro_wright'], bins=ro_bins, \
     #    labels=[r'$Ro \leq 0.1$', r'$0.1 < Ro \leq 0.5$', r'$Ro > 0.5$'])
     df_tot.rename(columns={'mass_bins':'Mass', 'Ro_bins':'$Ro$'}, inplace=True)
+    palette = ['blue', 'orange', 'lightgreen']
     sns.scatterplot(df_tot, x='radius', y='Teff [K]', s=30, hue='$Ro$', \
-            style='Mass', palette='colorblind', markers=['.', 'o'])
+            style='Mass', markers=['.', 'o'], \
+            palette=palette)#palette='colorblind')
     plt.xlabel(r'$R_\star [R_\odot]$', fontsize=14)
     plt.ylabel(r'$T_\mathrm{eff}$ [K]', fontsize=14)
     plt.legend()
@@ -2197,7 +2216,8 @@ def Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder):
     # Magnitudes
     plt.figure(figsize=(6, 3))
     sns.histplot(data=df_tot, x="tessmag", hue="Spectral type", \
-                    multiple="dodge", bins=5, shrink=.8)
+                    multiple="dodge", bins=5, shrink=.8, \
+                    palette=['r', 'y', 'indigo', 'c'])
     plt.xlabel(r'TESS magnitude', fontsize=14)
     plt.ylabel('Stars', fontsize=14)
     plt.tight_layout()
