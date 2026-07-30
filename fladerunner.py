@@ -667,15 +667,15 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #wt_diff(saveres_sym, saveres_compl, 'model_residuals', resfolder)
 
     ### Fits with stellar parameters (all in log quantities)
-    #simple_complex_fit(df[single], df[~single], dfc[complex], \
-    #        'log_radius', 'log_energy', \
-    #        r'$\log R_\star~[R_\odot]$', r'$\log$ Energy [erg]', resfolder)
-    #simple_complex_fit(df[single], df[~single], dfc[complex], \
-    #        'logg', 'log_duration', \
-    #        r'$\log g$', r'$\log$ Duration [min]', resfolder)
-    #simple_complex_fit(df[single], df[~single], dfc[complex], \
-    #        'logg', 'log_impulse', \
-    #       r'$\log g$', r'$\log$ Impulsiveness [min$^{-1}$]', resfolder)
+    simple_complex_fit(df[single], df[~single], dfc[complex], \
+            'log_radius', 'log_energy', \
+            r'$\log R_\star~[R_\odot]$', r'$\log$ Energy [erg]', resfolder)
+    simple_complex_fit(df[single], df[~single], dfc[complex], \
+            'logg', 'log_duration', \
+            r'$\log g$', r'$\log$ Duration [min]', resfolder)
+    simple_complex_fit(df[single], df[~single], dfc[complex], \
+            'logg', 'log_impulse', \
+           r'$\log g$', r'$\log$ Impulsiveness [min$^{-1}$]', resfolder)
     #simple_complex_fit(df[single], df[~single], dfc[complex], \
     #        'log_energy', 'log_fwhm', \
     #        r'$\log$ Energy [erg]', r'$\log$ FWHM [min]', resfolder)
@@ -697,10 +697,10 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #    'log_energy', 'log_duration', \
     #     r'$\log$ Energy [erg]', r'$\log$ Duration [min]', \
     #     resfolder)
-    #simple_complex_fit(df[single], df[~single], dfc[complex], \
-    #    'log_energy', 'log_efolding_time', \
-    #     r'$\log$ Energy [erg]', r'$\log \tau$ [min]', \
-    #     resfolder)
+    simple_complex_fit(df[single], df[~single], dfc[complex], \
+        'log_energy', 'log_efolding_time', \
+         r'$\log$ Energy [erg]', r'$\log \tau$ [min]', \
+         resfolder)
     #simple_complex_fit(df[single], df[~single], dfc[complex], \
     #    'logg', 'log_efolding_time', \
     #     r'$\log g$', r'$\log \tau$ [min]', \
@@ -725,7 +725,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #consecutive_flare_stats(df, dfc, resfolder)
 
     #segment_regression(pd.concat([df, dfc[complex]]), 'log_ED', resfolder, \
-    #    labelx=r'$\log Ro$', labely=r'$\log$ ED', samesize=True)
+    #    labelx=r'$\log Ro$', labely=r'$\log$ ED', samesize=False)
     #segment_regression(pd.concat([df, dfc[complex]]), 'rate_per_target', \
     #                resfolder, labelx=r'$\log Ro$', \
     #                labely=r'$\log$ Flares (star day)$^{-1}$')
@@ -734,10 +734,10 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #search_dragonking(df, resfolder, endname='_distributions_allsingle')
 
     # Separate results by spectral type
-    #pars = ['Energy [erg]', 'Peak amplitude', 'efolding_time [min]']#, 'FWHM [min]']
-    pars = ['efolding_time [min]']
-    #FDpred = [1.67, 1.80, 2.0, 2.0]
-    FDpred = [2.0]
+    pars = ['Energy [erg]', 'Peak amplitude', 'efolding_time [min]']#, 'FWHM [min]']
+    #pars = ['efolding_time [min]']
+    FDpred = [1.67, 1.80, 2.0, 2.0]
+    #FDpred = [2.0]
     stellar_pars = ['Teff [K]', 'Ro_wright', 'logg', 'tessmag']
     stpar_labels = [r'$T_\mathrm{eff}$ [K]', r'$\log Ro$', r'$\log g$', 'TESS mag']
 
@@ -1124,10 +1124,10 @@ def simple_complex_fit(df1, df2, df3, par1, par2, label_par1, label_par2, \
 
     dftemp = pd.concat([df1, df2, df3])
 
-    #sns.jointplot(dftemp, x=par1, y=par2, hue='Flare type', kind='hist', \
-    #        alpha=0.5, palette='colorblind', \
-    #        marginal_kws=dict(fill=False, element='step'))
-    fig, ax = plt.subplots(figsize=(6, 4))
+    #ax = sns.displot(dftemp, x=par1, y=par2, hue='Flare type', \
+    #        palette='colorblind')# fill=False)#, levels=1, linewidths=1)
+            #marginal_kws=dict(fill=True, element='stack'))
+    fig, ax = plt.subplots(figsize=(6, 3))
     for i, dd in enumerate([df1, df2, df3]):
         bin_edges = np.linspace(dd[par1].min() + 0.1*i, dd[par1].max(), 15)
         dd['bins'] = pd.cut(dd[par1], bins=bin_edges, include_lowest=True)
@@ -1165,7 +1165,8 @@ def simple_complex_fit(df1, df2, df3, par1, par2, label_par1, label_par2, \
                         np.diff(percs)[1], np.diff(percs)[0]))
             meds.append(percs[1])
         xTh = np.linspace(x.min(), x.max(), 100)
-        ax.plot(xTh, np.polyval(meds, xTh), color=colors[i], label=labels[i])
+        ax.plot(xTh, np.polyval(meds, xTh), color=colors[i], \
+                    label=labels[i], linewidth=3)
         #ax.plot(x, y, '.')
         # BIC, assuming uniform uncertainties and two free parameters
         # nvarys = 2
@@ -1307,10 +1308,23 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
     labels = ['IF', 'SFC', 'CF']
     colors = ['royalblue', 'orange', 'green']
 
+    q1 = np.log10(target_pars1['maxval']/target_pars1['minval'])
+    q2 = np.log10(target_pars2['maxval']/target_pars2['minval'])
+    q3 = np.log10(target_pars3['maxval']/target_pars3['minval'])
+    y1 = target_pars1[palpha]
+    y2 = target_pars2[palpha]
+    y3 = target_pars3[palpha]
+    yerr1 = target_pars1[psigma]
+    yerr2 = target_pars2[psigma]
+    yerr3 = target_pars3[psigma]
+
     fig1, ax1 = plt.subplots()
     fig2, ax2 = plt.subplots()
     fig3, ax3 = plt.subplots()
-    fig4, ax4 = plt.subplots(figsize=(6, 4))
+    if 'Energy' in par:
+        fig4, ax4 = plt.subplots()#figsize=(6, 4))
+    else:
+        fig4, ax4 = plt.subplots(figsize=(6, 3))
     ax4min, ax4max = np.inf, -np.inf
     #if 'Energy' in par:
     fig5, ax5 = plt.subplots()
@@ -1411,15 +1425,25 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
         print('Spearman corrcoeff between nobs' + ' and inertial range: ' \
                         + str(R) + ' ' + str(pv))
         #pfit['c'].vary = True
+        # One fit for all alphas
+        qfit = np.concatenate((q1, q2, q3))
+        yfit = np.concatenate((y1, y2, y3))
+        yerrfit = np.concatenate((yerr1, yerr2, yerr3))
         result = lmfit.minimize(residual_line, pfit, \
-            args=(ddd['q'], y, yerr), calc_covar=True)
+            args=(qfit, yfit, yerrfit), calc_covar=True)
+            #args=(ddd['q'], y, yerr), calc_covar=True)
 
         for spi, sp in enumerate(sptype):
             flag = ddd['Spectral type'] == sp
             if np.sum(flag) == 0:
                 continue
+            if 'Energy' in par:
+                label = sp + ' ' + labels[tpi]
+            else:
+                label = ''
             ax4.errorbar(ddd['q'][flag], y[flag], yerr=yerr[flag], \
-                fmt=markers[spi], c=colors[tpi], label=sp + ' ' + labels[tpi], \
+                fmt=markers[spi], c=colors[tpi], label=label, \
+                #sp + ' ' + labels[tpi], \
                 capsize=2)
         fitpars = [result.params['a'], result.params['b']]#, result.params['c']]
         xTh = np.linspace(ddd['q'].min(), ddd['q'].max(), 100)
@@ -1435,15 +1459,20 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
         if tpi == 0:
             th = target_pars['FD_pred']
             ax4.plot([0.1, 4.], [th, th], 'k--', label='FD SOC prediction')
-        ax4.plot(xTh, np.polyval(fitpars, xTh), c=colors[tpi])#, label='$p$' + pv)
+        ax4.plot(xTh, np.polyval(fitpars, xTh), c='k')#c=colors[tpi])#, label='$p$' + pv)
         ax4.set_xlabel(r'$q$', fontsize=14)
         if 'Energy' in par:
+            partext = 'Energy '
             ll = r' $\alpha_\mathrm{E}$'
         elif 'amplitude' in par:
+            partext = 'Peak amplitude'
             ll = r' $\alpha_\mathrm{F}$'
         elif 'Duration' in par or 'efolding' in par:
-            ll = r' $\alpha_\mathrm{d}$'
-        ax4.set_ylabel(par.split('[')[0] + ll, fontsize=14)
+            partext = 'Duration '
+            ll = r' $\alpha_\tau$'
+        else:
+            partext = copy.copy(par)
+        ax4.set_ylabel(partext.split('[')[0] + ll, fontsize=14)
         ax4.set_xlim(ax4min - 0.1, ax4max + 0.1)
         #ax4.set_xlim(0.5, 2.8)
         fig4.tight_layout()
@@ -1680,7 +1709,7 @@ def segment_regression(df, par, resfolder, labelx='', labely='', samesize=False)
         # Bootstrap
         rng = np.random.default_rng()
         result, models = [], []
-        for j in range(10):
+        for j in range(1000):
             if j % 100 == 0:
                 print(j)
             if not samesize:
@@ -2230,12 +2259,13 @@ def Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder):
 
     palette = ['r', 'y', 'indigo', 'c']
     # Add histogram for rotation periods
-    plt.figure(figsize=(6, 4))
+    plt.figure(figsize=(6, 3))
     sns.scatterplot(data=df_tot, x="Prot", y='tau_conv_wright', \
                 hue="Spectral type", palette=palette)
     #                multiple="dodge", bins=5, shrink=.8)
     plt.xlabel(r'$P_\mathrm{rot}$ [days]', fontsize=14)
     plt.ylabel(r'$\tau_c$ [days]', fontsize=14)
+    #plt.yscale('log')
     plt.tight_layout()
     plt.legend(loc='upper right')
     plt.savefig(resfolder + 'rot_periods.pdf')
@@ -2433,11 +2463,13 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
     plt.savefig(resfolder + 'consecutive_flare_ED.pdf')
     plt.close()
 
+    ''''
     # Do the two pair distributions come from the same one?
     # Compare distance of Spearman correlation coeffcients
     T_obs = abs(prs[0] - prs[1])
-    combined = pd.concat([dfi[['Energy [erg]', 'Energy_consecutive [erg]']][oks[0]], \
-        dfc[['Energy [erg]', 'Energy_consecutive [erg]']][oks[1]]]).reset_index(drop=True)
+    set_trace()
+    combined = pd.concat([dfi[['ED [s]', 'ED_consecutive [s]']][oks[0]], \
+        dfc[['ED [s]', 'ED_consecutive [s]']][oks[1]]]).reset_index(drop=True)
     combined = np.array(combined)
 
     rng = np.random.default_rng()
@@ -2459,7 +2491,7 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
     p_value = count / n_permutations
     print(f"Observed correlation difference: {T_obs:.4f}")
     print(f"p-value from permutation test: {p_value:.4f}")
-
+    '''
     return
 
 def flare_rate_per_target(df, resfolder):
