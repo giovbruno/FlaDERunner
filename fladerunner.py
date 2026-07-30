@@ -270,12 +270,13 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     results = {}
     # !!! Total duration is the duration of the associated complex flare
     parameters = ['LCname', 'Peak amplitude', 'Peak luminosity [erg s$^{-1}$]', \
-        'Duration [min]', 'FWHM [min]', 'Energy (Shibayama) [erg]', \
-        'Energy [erg]', 'ED [s]', 'Peak time [BTJD]', 'n_event', \
+        'Duration [min]', 'FWHM [min]', 'full_FWHM [min]', \
+        'Energy (Shibayama) [erg]', 'Energy [erg]', 'ED [s]', \
+        'Peak time [BTJD]', 'n_event', \
         'impulsive_ED_fraction', 't12', 'total_duration', 'Teff [K]', 'logg', \
         'feh', 'radius', 'phot_var', 'CaII_IRT', 'tessmag', 'Prot', 'FAP', \
         'distance', 'redchi2', 'ticname', 'ra', 'dec', 'scatter_SN', \
-        'dist_from_xmm', 'E_B-V', 'efolding_time', 'total_efolding']
+        'dist_from_xmm', 'E_B-V', 'efolding_time [min]', 'total_efolding']
     for band in ['6', '7', '8']:
         parameters.append('FLUX_B' + band)
         parameters.append('FLUX_B' + band + '_ERR')
@@ -358,7 +359,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
                             + flare.result_nodip.params_LM['tpeak' + str(n)].value)
                         params_s['Duration [min]'].append( \
                                 flare.get_single_duration(n).to(units.min).value)
-                        params_s['efolding_time'].append( \
+                        params_s['efolding_time [min]'].append( \
                                 flare.get_single_efolding(n).to(units.min).value)
 
                         # This is data-driven, so it shouldn't change with
@@ -371,6 +372,8 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
                         params_s['t12'].append(flare.t12.value*24*60.)
                         params_s['FWHM [min]'].append(24.*60.
                            *flare.result_nodip.params_LM['fwhm' + str(n)].value)
+                        params_s['full_FWHM [min]'].append( \
+                            flare.get_total_FWHM(flare.result_nodip).to(units.min).value)
                         params_s['ED [s]'].append(flare.get_flare_ED(n).value)
 
                         # Energy emitted during impulsive phase. FWHM on observed data is often wrong
@@ -608,7 +611,8 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
         mass_bins = [0., 0.35, np.inf]
         dd['mass_bins'] = pd.cut(dd['mass'], bins=mass_bins, \
                     labels=[r'$M \leq 0.35~M_\odot$', r'$M > 0.35~M_\odot$'])
-        dd['log_efolding_time'] = np.log10(dd['efolding_time'].astype(float))
+        dd['efolding_time [min]'] = dd['efolding_time [min]'].astype(float)
+        dd['log_efolding_time'] = np.log10(dd['efolding_time [min]'])
 
     flag = np.isinf(df['log_efolding_time'])
     df = df[~flag]
@@ -625,15 +629,16 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     # For publication
     psave = ['ticname', 'designation', 'LCname', 'Peak amplitude', \
         'Peak luminosity [erg s$^{-1}$]', 'Duration [min]', \
-        'efolding_time', 'FWHM [min]', 'Energy [erg]', 'ED [s]', \
+        'efolding_time [min]', 'FWHM [min]', 'full_FWHM [min]', \
+        'Energy [erg]', 'ED [s]', \
         'Peak time [BTJD]', 'Impulsiveness [min$^{-1}$]', \
         'n_event', 't12', 'redchi2', 'total_efolding', \
         'peaks_per_event', 'Flare type', 'waiting_time', \
         'Teff [K]', 'logg', 'feh', 'radius', 'phot_var', 'tessmag', \
-        'Prot', 'FAP', 'distance', 'E_B-V',  'scatter_SN', , 'Aspot [Asun]', 'Aspot_mean [Asun]', 'Spectral type', 'mass', \
+        'Prot', 'FAP', 'distance', 'E_B-V',  'scatter_SN' , 'Aspot [Asun]', \
+        'Spectral type', 'mass', \
         'tau_conv_wright', 'Ro_wright',  'flares_per_target',
         'time_on_target', 'rate_per_target']
-    #
 
     ### Trends
     #Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder)
@@ -694,8 +699,29 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #     resfolder)
     #simple_complex_fit(df[single], df[~single], dfc[complex], \
     #    'log_energy', 'log_efolding_time', \
-    #     r'$\log$ Energy [erg]', r'$\log e$-folding time [min]', \
+    #     r'$\log$ Energy [erg]', r'$\log \tau$ [min]', \
     #     resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #    'logg', 'log_efolding_time', \
+    #     r'$\log g$', r'$\log \tau$ [min]', \
+    #     resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #    'log_efolding_time', 'log_luminosity', \
+    #     r'$\log \tau$', r'$\log$ Peak luminosity [erg s$^{-1}$]', \
+    #     resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #    'log_efolding_time', 'log_luminosity', \
+    #     r'$\log \tau [min]$', r'$\log$ Peak luminosity [erg s$^{-1}$]', \
+    #     resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #    'logg', 'log_luminosity', \
+    #     r'$\log g$', r'$\log$ Peak luminosity [erg s$^{-1}$]', \
+    #     resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #    'logg', 'log_amplitude', \
+    #     r'$\log g$', r'$\log$ amplitude', \
+    #     resfolder)
+
     #consecutive_flare_stats(df, dfc, resfolder)
 
     #segment_regression(pd.concat([df, dfc[complex]]), 'log_ED', resfolder, \
@@ -707,11 +733,11 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #search_dragonking(dfc, resfolder)
     #search_dragonking(df, resfolder, endname='_distributions_allsingle')
 
-    return
-
     # Separate results by spectral type
-    pars = ['Energy [erg]', 'Peak amplitude', 'Duration [min]', 'FWHM [min]']
-    FDpred = [1.67, 1.80, 2.0, 2.0]
+    #pars = ['Energy [erg]', 'Peak amplitude', 'efolding_time [min]']#, 'FWHM [min]']
+    pars = ['efolding_time [min]']
+    #FDpred = [1.67, 1.80, 2.0, 2.0]
+    FDpred = [2.0]
     stellar_pars = ['Teff [K]', 'Ro_wright', 'logg', 'tessmag']
     stpar_labels = [r'$T_\mathrm{eff}$ [K]', r'$\log Ro$', r'$\log g$', 'TESS mag']
 
@@ -962,7 +988,7 @@ def complex_flare_fraction(df, resfolder):
 
     return
 
-def monte_carlo_permutation(x_obs, y_obs, sigma_y, n_mc=1000, n_perm=10):
+def monte_carlo_permutation(x_obs, y_obs, sigma_y, n_mc=1000, n_perm=1000):
     '''
     Simulate many data sets within uncertainties and for each derive a
     Spearman correlation coefficient with its p-value.
@@ -1415,7 +1441,7 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
             ll = r' $\alpha_\mathrm{E}$'
         elif 'amplitude' in par:
             ll = r' $\alpha_\mathrm{F}$'
-        elif 'Duration' in par:
+        elif 'Duration' in par or 'efolding' in par:
             ll = r' $\alpha_\mathrm{d}$'
         ax4.set_ylabel(par.split('[')[0] + ll, fontsize=14)
         ax4.set_xlim(ax4min - 0.1, ax4max + 0.1)
@@ -2191,7 +2217,7 @@ def Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder):
     #df_tot['Ro_bins'] = pd.cut(df_tot['Ro_wright'], bins=ro_bins, \
     #    labels=[r'$Ro \leq 0.1$', r'$0.1 < Ro \leq 0.5$', r'$Ro > 0.5$'])
     df_tot.rename(columns={'mass_bins':'Mass', 'Ro_bins':'$Ro$'}, inplace=True)
-    palette = ['blue', 'orange', 'lightgreen']
+    palette = ['darkorange', 'limegreen', 'darkblue']
     sns.scatterplot(df_tot, x='radius', y='Teff [K]', s=30, hue='$Ro$', \
             style='Mass', markers=['.', 'o'], \
             palette=palette)#palette='colorblind')
@@ -2202,9 +2228,11 @@ def Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder):
     plt.savefig(resfolder + 'Tstar_vs_Rstar.pdf')
     plt.close()
 
+    palette = ['r', 'y', 'indigo', 'c']
     # Add histogram for rotation periods
     plt.figure(figsize=(6, 4))
-    sns.scatterplot(data=df_tot, x="Prot", y='tau_conv_wright', hue="Spectral type")
+    sns.scatterplot(data=df_tot, x="Prot", y='tau_conv_wright', \
+                hue="Spectral type", palette=palette)
     #                multiple="dodge", bins=5, shrink=.8)
     plt.xlabel(r'$P_\mathrm{rot}$ [days]', fontsize=14)
     plt.ylabel(r'$\tau_c$ [days]', fontsize=14)
@@ -2216,8 +2244,7 @@ def Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder):
     # Magnitudes
     plt.figure(figsize=(6, 3))
     sns.histplot(data=df_tot, x="tessmag", hue="Spectral type", \
-                    multiple="dodge", bins=5, shrink=.8, \
-                    palette=['r', 'y', 'indigo', 'c'])
+        multiple="dodge", bins=5, shrink=.8, palette=palette)
     plt.xlabel(r'TESS magnitude', fontsize=14)
     plt.ylabel('Stars', fontsize=14)
     plt.tight_layout()
@@ -2263,8 +2290,8 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
 
     fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(12, 6))
     ax = ax.flatten()
-    pars = ['Peak luminosity [erg s$^{-1}$]', 'Impulsiveness [min$^{-1}$]', \
-            'Energy [erg]', 'Duration [min]']
+    pars = ['Peak amplitude', 'Impulsiveness [min$^{-1}$]', \
+            'Energy [erg]', 'efolding_time [min]']
     logbins = np.logspace(-3, 3, 20)
     # Distributions to compare
     distribs = {}
@@ -2297,7 +2324,13 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
                 label=label, \
                 density=True, cumulative=False, bins=logbins)
         ax[m].set_xscale('log')
-        ax[m].set_xlabel(par.split('[')[0] + 'ratio', fontsize=14)
+        if 'amplitude' in par:
+            partext = par + ' '
+        elif 'efolding_time' in par:
+            partext = r'Duration '
+        else:
+            partext = par
+        ax[m].set_xlabel(partext.split('[')[0] + 'ratio', fontsize=14)
         ax[m].legend()#loc='lower left')
     fig.supylabel('PDF', fontsize=14)
     plt.tight_layout()
@@ -2400,7 +2433,6 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
     plt.savefig(resfolder + 'consecutive_flare_ED.pdf')
     plt.close()
 
-    set_trace()
     # Do the two pair distributions come from the same one?
     # Compare distance of Spearman correlation coeffcients
     T_obs = abs(prs[0] - prs[1])
@@ -2598,12 +2630,15 @@ def condense_flare_cascades(df, resfolder):
         dfc.drop(columns='Duration [min]', inplace=True)
         dfc.rename(columns={'total_duration':'Duration [min]'}, inplace=True)
         dfc['Duration [min]'] *= 24.*60.
-        dfc.drop(columns='efolding_time', inplace=True)
-        dfc.rename(columns={'total_efolding':'efolding_time'}, \
+        dfc.drop(columns='efolding_time [min]', inplace=True)
+        dfc.rename(columns={'total_efolding':'efolding_time [min]'}, \
                         inplace=True)
 
         dfc.drop(columns='FWHM [min]', inplace=True)
-        dfc.rename(columns={'t12':'FWHM [min]'}, inplace=True)
+        dfc.rename(columns={'full_FWHM [min]':'FWHM [min]'}, inplace=True)
+        # Given the cadence of the raw time axis, the smallest possible
+        # FWHM is 20 s.
+        #dfc.replace({'FWHM [min]':0.}, 0.33, inplace=True)
         group_cols = ['LCname', 'n_event']
 
         # Get peak time as mean weighted over energy
@@ -2630,13 +2665,13 @@ def condense_flare_cascades(df, resfolder):
         cols_to_sum = ['ED [s]', 'Energy (Shibayama) [erg]', \
                         'Energy [erg]', 'Energy [J]']
         dfc[cols_to_sum] = dfc.groupby(group_cols)[cols_to_sum].transform('sum')
-        dfc['peaks_per_event'] = dfc.groupby(group_cols)['LCname'].transform('count')
+        dfc['peaks_per_event'] = dfc.groupby( \
+                        group_cols)['LCname'].transform('count')
 
         cols_to_max = ['Peak luminosity [erg s$^{-1}$]', 'Peak amplitude', \
                 'Area [m$^2$]', 'Peak flux [W m$^{-2}$]', 'Peak luminosity [W]', \
                 'Peak flux [erg s$^{-1}$ cm$^{-2}$]']
         dfc[cols_to_max] = dfc.groupby(group_cols)[cols_to_max].transform('max')
-        #dfc['Impulsiveness [min$^{-1}$]'] = dfc['Peak amplitude']/dfc['FWHM [min]']
         dfc['Impulsiveness [min$^{-1}$]'] = dfc['Peak amplitude']/dfc['FWHM [min]']
 
         # Identifier for every cascade
@@ -2657,7 +2692,8 @@ def condense_flare_cascades(df, resfolder):
                 'feh':'float', 'Duration [min]':'float', 'radius':'float', \
                 'FWHM [min]':'float', 'Energy [erg]':'float', \
                 'Impulsiveness [min$^{-1}$]':'float', \
-                'Peak amplitude':'float'}, copy=False)
+                'Peak amplitude':'float', 'efolding_time [min]':'float'}, \
+                copy=False)
 
     return dfc
 

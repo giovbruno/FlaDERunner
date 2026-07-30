@@ -648,6 +648,17 @@ class flare:
             return models.exp_convolved(tt, result.params, self.npeaks) \
                 + models.flare_dip(result.params, tt)
 
+    def get_continuum(self, result):
+        '''
+        Get continuum model for a given flare, using the raw time axis.
+        '''
+        poly = []
+        for p in ['d', 'e', 'f']:
+            poly.append(result.params[p].value)
+        quiet = np.polyval(poly, self.tdata.value)
+
+        return quiet
+
     def get_single_duration(self, n, double_t=True):
         '''
         Flare #n (in case of complex profile) duration based
@@ -664,6 +675,25 @@ class flare:
         else:
             tunit = tt.unit
             return 0.*tunit
+
+    def get_total_FWHM(self, result, double_t=True):
+        '''
+        Get max distance between points with flux > 0.5*flux peak
+        '''
+        tt = self.tdata
+        thisflare = self.get_full_profile(result)
+
+        # Remove quiet flux
+        quiet = self.get_continuum(result)
+        thisflare -= quiet
+
+        above_half = thisflare >= 0.5*thisflare.max()
+        total_fwhm = np.ptp(tt[above_half])
+
+        if total_fwhm == 0.*u.day:
+            total_fwhm = np.diff(tt).min()
+
+        return total_fwhm
 
     def get_single_efolding(self, n, double_t=True):
         '''
@@ -684,11 +714,15 @@ class flare:
         tt = self.tdata
         thisflare = self.get_full_profile(result)
 
+        # Remove quiet flux
+        quiet = self.get_continuum(result)
+        thisflare -= quiet
+
         tpeak = thisflare.argmax()
         decrease = thisflare[tpeak:]
         epeak = thisflare.max()/np.e
-        te = np.argmin(abs(decrease - epeak))
-        efolding_time = tt[tpeak + te] - tt[tpeak]
+        tef = tt[tpeak:][decrease >= epeak]
+        efolding_time = np.ptp(tef)
 
         return efolding_time
 
