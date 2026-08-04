@@ -495,6 +495,11 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
                 params['distance'] == -999., np.isnan(params['Energy [erg]']), \
                 params['radius'] == -999., params['logg'] == None, \
                 params['Teff [K]'] == -999., params['phot_var'] < 0.))
+
+    #flag_bad = np.logical_or.reduce((params['radius'] == -999., params['logg'] #== None,\
+    #    params['Teff [K]'] == -999., params['phot_var'] < 0.))
+    #set_trace()
+
     print('\nNo stellar params: {:.2f}%'.format( \
             np.sum(flag_bad)/len(flag_bad)*100.))
     for p in parameters:
@@ -667,15 +672,15 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #wt_diff(saveres_sym, saveres_compl, 'model_residuals', resfolder)
 
     ### Fits with stellar parameters (all in log quantities)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-            'log_radius', 'log_energy', \
-            r'$\log R_\star~[R_\odot]$', r'$\log$ Energy [erg]', resfolder)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-            'logg', 'log_duration', \
-            r'$\log g$', r'$\log$ Duration [min]', resfolder)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-            'logg', 'log_impulse', \
-           r'$\log g$', r'$\log$ Impulsiveness [min$^{-1}$]', resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #        'log_radius', 'log_energy', \
+    #        r'$\log R_\star~[R_\odot]$', r'$\log$ Energy [erg]', resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #        'logg', 'log_duration', \
+    #        r'$\log g$', r'$\log$ Duration [min]', resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #        'logg', 'log_impulse', \
+    #       r'$\log g$', r'$\log \mathcal{I}$ [min$^{-1}$]', resfolder)
     #simple_complex_fit(df[single], df[~single], dfc[complex], \
     #        'log_energy', 'log_fwhm', \
     #        r'$\log$ Energy [erg]', r'$\log$ FWHM [min]', resfolder)
@@ -697,10 +702,10 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #    'log_energy', 'log_duration', \
     #     r'$\log$ Energy [erg]', r'$\log$ Duration [min]', \
     #     resfolder)
-    simple_complex_fit(df[single], df[~single], dfc[complex], \
-        'log_energy', 'log_efolding_time', \
-         r'$\log$ Energy [erg]', r'$\log \tau$ [min]', \
-         resfolder)
+    #simple_complex_fit(df[single], df[~single], dfc[complex], \
+    #    'log_energy', 'log_efolding_time', \
+    #     r'$\log$ Energy [erg]', r'$\log \tau$ [min]', \
+    #     resfolder)
     #simple_complex_fit(df[single], df[~single], dfc[complex], \
     #    'logg', 'log_efolding_time', \
     #     r'$\log g$', r'$\log \tau$ [min]', \
@@ -715,21 +720,21 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #     resfolder)
     #simple_complex_fit(df[single], df[~single], dfc[complex], \
     #    'logg', 'log_luminosity', \
-    #     r'$\log g$', r'$\log$ Peak luminosity [erg s$^{-1}$]', \
+    #     r'$\log g$', r'$\log L_\mathrm{peak}$ [erg s$^{-1}$]', \
     #     resfolder)
     #simple_complex_fit(df[single], df[~single], dfc[complex], \
     #    'logg', 'log_amplitude', \
     #     r'$\log g$', r'$\log$ amplitude', \
     #     resfolder)
 
-    #consecutive_flare_stats(df, dfc, resfolder)
+    consecutive_flare_stats(df, dfc, resfolder)
 
     #segment_regression(pd.concat([df, dfc[complex]]), 'log_ED', resfolder, \
     #    labelx=r'$\log Ro$', labely=r'$\log$ ED', samesize=False)
     #segment_regression(pd.concat([df, dfc[complex]]), 'rate_per_target', \
     #                resfolder, labelx=r'$\log Ro$', \
     #                labely=r'$\log$ Flares (star day)$^{-1}$')
-
+    return
     #search_dragonking(dfc, resfolder)
     #search_dragonking(df, resfolder, endname='_distributions_allsingle')
 
@@ -2231,7 +2236,8 @@ def flaring_vs_nonflaring_stars(df, nfl, resfolder):
         plt.tight_layout()
         plt.savefig(resfolder + 'flaring_stars_' + str(p) + '.pdf')
         plt.close()
-
+    nfl.drop_duplicates(subset='ticname')[['ticname', 'designation', 'Teff [K]', 'logg', 'feh', 'radius', 'mass', 'Prot', 'FAP', 'RA_OBJ', 'DEC_OBJ', 'tessmag', 'phot_g_mean_mag', 'Ro_wright']].to_csv('/home/giovanni/Desktop/non_flaring_stars.csv', index=False)
+    set_trace()
     return
 
 def Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder):
@@ -2366,7 +2372,7 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
     plt.tight_layout()
     plt.savefig(resfolder + 'consecutive_flare_stats_PDF.pdf')
     plt.close()
-
+    set_trace()
     for par in pars:
         print('\n', par)
         for order in range(1, dfc['order'].max() + 1):
@@ -2430,11 +2436,11 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
     #markers = ['.', '.', '.', '.']
     oks = []
     prs = []
-    labels = ['Multi-peak components', 'Single + multi-peak', \
-                'Consecutive single-peak', 'Non-consecutive single-peak']
+    labels = ['Multi-peak components', 'Consecutive single-peak', \
+            'Single + multi-peak', 'Non-consecutive single-peak']
 
     fig, axs = plt.subplots(nrows=1, ncols=4, figsize=(16, 5))
-    for i, dd in enumerate([dfc, dfi, dfsingle, dfsingle_sep]):
+    for i, dd in enumerate([dfc, dfsingle, dfi, dfsingle_sep]):
         ok = ~np.isnan(dd['ED_consecutive [s]'])
         oks.append(ok)
         if i < 3:
