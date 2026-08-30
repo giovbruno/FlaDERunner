@@ -624,6 +624,8 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     flag = np.isinf(dfc['log_efolding_time'])
     dfc = dfc[~flag]
 
+    #df.drop_duplicates(subset='ticname')[['ticname', 'designation', 'Teff [K]', #'logg', 'feh', 'radius', 'mass', 'Prot', 'FAP', 'ra', 'dec', 'tessmag', #'phot_g_mean_mag', 'Ro_wright']].to_csv('/home/giovanni/Desktop/#flaring_stars.csv', index=False)
+
     # Filter non-flaring stars too
     nfl = get_non_flaring_stars(resfolder, maxT, maxR, maxTmag, maxProt, maxFAP)
     nfl.rename(columns={'RADIUS':'radius', 'Prot_[days]':'Prot', \
@@ -2312,6 +2314,25 @@ def peaks_vs_ro(df, resfolder):
 
 def consecutive_flare_stats(df, dfcomplex, resfolder):
 
+    def permutated_skew(df, par, refvalue, niter=1000):
+        '''
+        How likely is it that a random selection of ratios shows the same level of
+        asymmetry?
+        There's no more need of using "shift(1)", as we are not looking for
+        consecutive flares anymore
+        '''
+        l1 = len(dfi)
+
+        stat_r = []
+        for i in range(niter):
+            random_ratio = np.log10(np.random.choice(df[par], size=l1)) \
+                - np.log10(np.random.choice(df[par], size=l1))
+            stat_r.append(stats.skew(random_ratio, nan_policy='omit'))
+            #stat_r.append(np.sum(random_ratio < 0.)/l1)
+        pvalue = np.nansum(abs(np.array(stat_r)) >= abs(refvalue))/niter
+
+        return pvalue
+
     df.sort_values(['LCname', 'Peak time [BTJD]'], inplace=True)
     #df.reset_index(inplace=True, drop=True)
     dfc = df[df['Flare type'] == 'SFC']
@@ -2328,13 +2349,19 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
     ax = ax.flatten()
     pars = ['Peak amplitude', 'Impulsiveness [min$^{-1}$]', \
             'Energy [erg]', 'efolding_time [min]']
-    logbins = np.logspace(-3, 3, 20)
+    #logbins = np.logspace(-3, 3, 20)
+    logbins = np.linspace(-3, 3, 20)
     # Distributions to compare
     distribs = {}
     for m, par in enumerate(pars):
         # Start with consecutive isolated flares
         dfi['normalized_' + par] \
-            = dfi.groupby(['LCname'])[par].shift(1) / dfi[par]
+            = np.log10(dfi.groupby(['LCname'])[par].shift(1) / dfi[par])
+        stat_i = stats.skew(dfi['normalized_' + par], nan_policy='omit')
+        #stat_i = np.nansum(dfi['normalized_' + par] < 0.)/len(dfi)
+        pi = permutated_skew(dfi, par, stat_i)
+        print(par, '- p-value for isolated consecutive flares:', pi)
+
         if m == 0:
             label = 'Consecutive single-peak ({})'.format( \
                     len(dfi['normalized_' + par]))
@@ -2345,21 +2372,23 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
                     density=True, cumulative=False, bins=logbins)
 
         dfc['normalized_' + par] \
-            = dfc.groupby(['LCname', 'n_event'])[par].shift(1) / df[par]
-
-        skew_i = stats.skewtest(dfi['normalized_' + par])
-        skew_c = {}
+            = np.log10(dfc.groupby(['LCname', 'n_event'])[par].shift(1) / df[par])
+        stat_c = {}
         for order in range(1, 5):
             flag = dfc['order'] == order
             if m == 0:
                 label = 'Peak no. {} to {} ({})'.format(order + 1, order, np.sum(flag))
             else:
                 label = 'Peak no. {} to {}'.format(order + 1, order)
-            skew_c[order] = stats.skewtest(dfc['normalized_' + par][flag])
+            stat_c[order] = stats.skew(dfc['normalized_' + par][flag], nan_policy='omit')
+            #stat_c[order] = np.nansum(dfc['normalized_' + par][flag] < 0.)/len(dfc)
+            pc = permutated_skew(dfc, par, stat_c[order])
+            print(par, '- p-value for peak no. {} vs {} flares: {}'.format(\
+                        order + 1, order, pc))
             ax[m].hist(dfc['normalized_' + par][flag], log=False, histtype='step', \
                 label=label, \
                 density=True, cumulative=False, bins=logbins)
-        ax[m].set_xscale('log')
+        #ax[m].set_xscale('log')
         if 'amplitude' in par:
             partext = par + ' '
         elif 'efolding_time' in par:
@@ -2367,12 +2396,12 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
         else:
             partext = par
         ax[m].set_xlabel(partext.split('[')[0] + 'ratio', fontsize=14)
-        ax[m].legend()#loc='lower left')
+        ax[m].legend(loc='upper left')
     fig.supylabel('PDF', fontsize=14)
     plt.tight_layout()
     plt.savefig(resfolder + 'consecutive_flare_stats_PDF.pdf')
     plt.close()
-    set_trace()
+
     for par in pars:
         print('\n', par)
         for order in range(1, dfc['order'].max() + 1):
@@ -2382,10 +2411,10 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
                 # Compare first vs second in complex with consecutive isolated
                 pval = stats.ks_2samp(dfc[par][flagm].dropna(), \
                             dfi[par].dropna()).pvalue
-                print(str(order - 1), 'vs consecutive isolated:', pval, skew_i.pvalue)
+                print(str(order - 1), 'vs consecutive isolated:', pval)#, stat_i.pvalue)
             pval = stats.ks_2samp(dfc[par][flagm].dropna(), \
             dfc[par][flag].dropna()).pvalue
-            print(str(order), 'vs', str(order - 1), ': ', pval, skew_c[order].pvalue)
+            print(str(order), 'vs', str(order - 1), ': ', pval)#, skew_c[order].pvalue)
 
     dfc['ED_consecutive [s]'] = dfc.groupby(['LCname', \
             'n_event'])['ED [s]'].shift(1).astype(float)
@@ -2413,20 +2442,36 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
     dfsingle_sep = dfcomplex[flag].sample(n=5000, replace=False)
     dfsingle_sep['ED_consecutive [s]'] = dfsingle_sep.groupby( \
                     ['LCname'])['ED [s]'].shift(1).astype(float)
+    dfsingle_sep['Peak_time_following'] = dfsingle_sep.groupby( \
+                    ['LCname'])['Peak time [BTJD]'].shift(1).astype(float)
+    delta_t = dfsingle_sep['Peak time [BTJD]'] - dfsingle_sep['Peak_time_following']
+    delta_t = abs(delta_t)*24.
+    separation = np.logical_and(~np.isnan(delta_t), delta_t > 1.)
+    dfsingle_sep = dfsingle_sep[separation]
+
     # Compute corr coeff for 1000 samplings
     pr_iter = []
     count = 0
-    for it in range(1000):
-        zz = dfcomplex[flag].sample(n=2000, replace=False)
+    niter = 1000
+    for it in range(niter):
+        zz = dfcomplex.sample(n=2000, replace=False)
         zz['ED_consecutive [s]'] = zz.groupby( \
                     ['LCname'])['ED [s]'].shift(1).astype(float)
+        zz['Peak_time_following'] = zz.groupby( \
+                    ['LCname'])['Peak time [BTJD]'].shift(1).astype(float)
+        delta_t = zz['Peak time [BTJD]'] - zz['Peak_time_following']
+        delta_t = abs(delta_t)*24.
+        flag = np.logical_and(~np.isnan(delta_t), delta_t > 1.)
+        zz = zz[flag]
+
         ok = ~np.isnan(zz['ED_consecutive [s]'])
+        # Remove pairs with at least one duplicate element?
         rsp = stats.spearmanr(np.log10(zz['ED [s]'][ok]), \
                     np.log10(zz['ED_consecutive [s]'][ok]))
         pr_iter.append(rsp[0])
         if rsp[1] >= 0.05:
             count += 1
-    p_value = count/1000.
+    p_value = count/niter
     pr_sep_mean = np.mean(pr_iter)
     pr_sep_std = np.std(pr_iter)
     #dfsingle_sep['Energy_consecutive [erg]'] = dfsingle_sep['Energy [erg]'].shift(1).astype(float)
@@ -2443,9 +2488,9 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
     for i, dd in enumerate([dfc, dfsingle, dfi, dfsingle_sep]):
         ok = ~np.isnan(dd['ED_consecutive [s]'])
         oks.append(ok)
-        if i < 3:
-            pr = stats.spearmanr(np.log10(dd['ED [s]'][ok]), \
+        pr = stats.spearmanr(np.log10(dd['ED [s]'][ok]), \
                         np.log10(dd['ED_consecutive [s]'][ok]))
+        if i < 3:
             axs.flat[i].loglog(dd['ED [s]'], dd['ED_consecutive [s]'], \
                 '.', label=r'$r=${:.2f} ({})'.format(pr[0], \
                 np.sum(ok)), alpha=0.3)
@@ -2462,6 +2507,12 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
         axs.flat[i].legend(loc='lower right')
         axs.flat[i].tick_params(axis='both', which='major', labelsize=14)
         axs.flat[i].tick_params(axis='both', which='minor', labelsize=12)
+
+        # How many times is pr larger than the non-consecutive isolated
+        # flare baseline?
+        pr_baseline = np.sum(np.array(pr_iter) >= pr[0])/len(pr_iter)
+        print('Delta p (this sample) - isolated non-consecutive flares:', \
+                    pr_baseline)
     fig.supxlabel('ED [s]', fontsize=16)
     fig.supylabel('Consecutive ED [s]', fontsize=16)
     plt.legend()
