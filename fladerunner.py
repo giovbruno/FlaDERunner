@@ -1947,8 +1947,28 @@ def waiting_time_distribution(df, resfolder, fltypes, lab, set_logbins=None, \
         # Try two exponentials
         distrib = distrib.tolist()
 
-        fit_ew = stats.exponweib.fit(distrib)
-        print(ro_i, ', Fit EW:', fit_ew)
+        #fit_ew = stats.exponweib.fit(distrib)
+        fit_wm = stats.weibull_min.fit(distrib)
+        # Bootstrap for uncertainties
+        if pdf:
+            bs = []
+            for _ in range(1000):
+                x = np.random.choice(distrib, size=len(distrib), replace=True)
+                bs.append(stats.weibull_min.fit(x))
+
+            cbs = [x[0] for x in bs]
+            cmean = np.mean(cbs)
+            cstd = np.std(cbs)
+            lambda_bs = [x[2] for x in bs]
+            lambda_mean = np.mean(lambda_bs)
+            lambda_std = np.std(lambda_bs)
+        else:
+            cmean = fit_wm[0]
+            cstd = 0.
+            lambda_mean = fit_wm[2]
+            lambda_std = 0.
+
+        print(ro_i, ', Fit Weibull (c, loc, scale):', fit_wm)
         fit_e = stats.expon.fit(distrib)
         print(ro_i, ', Fit exp:', fit_e)
 
@@ -1960,22 +1980,28 @@ def waiting_time_distribution(df, resfolder, fltypes, lab, set_logbins=None, \
             logbins = set_logbins[ro_i][0]
         else:
             logbins = np.logspace(np.log10(bins[0]),np.log10(bins[-1]), len(bins))
+        labeladd \
+            = r' ($c={:.2f}\pm{:.2f},\,\lambda={:.0f}\pm{:.0f}$ min)'.format( \
+                    cmean, cstd, lambda_mean, lambda_std)
         yy = ax_wt.hist(distrib, bins=logbins, log=True, density=pdf, \
                     histtype='step', color=ccs[i], label=ro_i + label \
-                    + r' ($c={:.2f}$)'.format(fit_ew[1]))
+                    + labeladd)
         if yy[0].max() > ymax:
             ymax = yy[0].max()
-        xth = lambda a, x: stats.exponweib.ppf(a, x[0], x[1], loc=x[2], \
-                                          scale=x[3])
-        x_ew = np.linspace(xth(0.001, fit_ew), xth(0.999, fit_ew), 300000)
-        pdf_ew = stats.exponweib.pdf(x_ew, fit_ew[0], fit_ew[1], \
-                loc=fit_ew[2], scale=fit_ew[3])
+        #xth = lambda a, x: stats.exponweib.ppf(a, x[0], x[1], loc=x[2], \
+        #                                  scale=x[3])
+        xth = lambda a, x: stats.weibull_min.ppf(a, x[0], loc=x[1], \
+                                          scale=x[2])
+        x_wm = np.linspace(xth(0.001, fit_wm), xth(0.999, fit_wm), 300000)
+        #pdf_ew = stats.exponweib.pdf(x_ew, fit_ew[0], fit_ew[1], \
+        #        loc=fit_ew[2], scale=fit_ew[3])
+        pdf_wm = stats.weibull_min.pdf(x_wm, fit_wm[0], loc=fit_wm[1], \
+                scale=fit_wm[2])
 
         xth = lambda a, x: stats.expon.ppf(a, loc=x[0], scale=x[1])
         x_e = np.linspace(xth(0.001, fit_e), xth(0.999, fit_e), 300000)
-        pdf_e = stats.expon.pdf(x_e, loc=fit_e[0], scale=fit_e[1])#*scaling
-
-        ax_wt.plot(x_ew, pdf_ew, '--', color=ccs[i])
+        pdf_e = stats.expon.pdf(x_e, loc=fit_e[0], scale=fit_e[1])
+        ax_wt.plot(x_wm, pdf_wm, '--', color=ccs[i])
         ax_wt.plot(x_e, pdf_e, ':', color=ccs[i])
 
         # Save histos and exponential fit to later plot residuals
@@ -1988,9 +2014,9 @@ def waiting_time_distribution(df, resfolder, fltypes, lab, set_logbins=None, \
         ax_wt.set_xlim(logbins[0]*0.5, logbins[-1]*1.5)
     else:
         ax_wt.set_xlim(6, logbins[-1]*1.5)
-    ax_wt.plot([], [], 'k--', label='Expon. Weibull')
+    ax_wt.plot([], [], 'k--', label='Weibull')
     ax_wt.plot([], [], 'k:', label='Exponential')
-    ax_wt.legend()
+    ax_wt.legend(loc='lower left')
     ax_wt.set_xlabel('Waiting time [min]', fontsize=14)
     ax_wt.set_ylabel(r'$P(\Delta t)$', fontsize=14)
     plt.tight_layout()
@@ -2313,8 +2339,8 @@ def peaks_vs_ro(df, resfolder):
     return
 
 def consecutive_flare_stats(df, dfcomplex, resfolder):
-
-    def permutated_skew(df, par, refvalue, niter=1000):
+#
+    def permutated_skew(df, par, refvalue, niter=10000):
         '''
         How likely is it that a random selection of ratios shows the same level of
         asymmetry?
@@ -2325,12 +2351,11 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
 
         stat_r = []
         for i in range(niter):
-            random_ratio = np.log10(np.random.choice(df[par], size=l1)) \
-                - np.log10(np.random.choice(df[par], size=l1))
-            stat_r.append(stats.skew(random_ratio, nan_policy='omit'))
+            random_ratio = np.log10(np.random.choice(df[par], size=l1) \
+                / np.random.choice(df[par], size=l1))
+            stat_r.append(abs(stats.skew(random_ratio, nan_policy='omit')))
             #stat_r.append(np.sum(random_ratio < 0.)/l1)
-        pvalue = np.nansum(abs(np.array(stat_r)) >= abs(refvalue))/niter
-
+        pvalue = np.nansum(np.array(stat_r) >= refvalue)/niter
         return pvalue
 
     df.sort_values(['LCname', 'Peak time [BTJD]'], inplace=True)
@@ -2357,7 +2382,7 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
         # Start with consecutive isolated flares
         dfi['normalized_' + par] \
             = np.log10(dfi.groupby(['LCname'])[par].shift(1) / dfi[par])
-        stat_i = stats.skew(dfi['normalized_' + par], nan_policy='omit')
+        stat_i = abs(stats.skew(dfi['normalized_' + par], nan_policy='omit'))
         #stat_i = np.nansum(dfi['normalized_' + par] < 0.)/len(dfi)
         pi = permutated_skew(dfi, par, stat_i)
         print(par, '- p-value for isolated consecutive flares:', pi)
@@ -2380,7 +2405,8 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
                 label = 'Peak no. {} to {} ({})'.format(order + 1, order, np.sum(flag))
             else:
                 label = 'Peak no. {} to {}'.format(order + 1, order)
-            stat_c[order] = stats.skew(dfc['normalized_' + par][flag], nan_policy='omit')
+            stat_c[order] = abs(stats.skew(dfc['normalized_' + par][flag], \
+                            nan_policy='omit'))
             #stat_c[order] = np.nansum(dfc['normalized_' + par][flag] < 0.)/len(dfc)
             pc = permutated_skew(dfc, par, stat_c[order])
             print(par, '- p-value for peak no. {} vs {} flares: {}'.format(\
@@ -2395,7 +2421,7 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
             partext = r'Duration '
         else:
             partext = par
-        ax[m].set_xlabel(partext.split('[')[0] + 'ratio', fontsize=14)
+        ax[m].set_xlabel(partext.split('[')[0] + '$\log$-ratio', fontsize=14)
         ax[m].legend(loc='upper left')
     fig.supylabel('PDF', fontsize=14)
     plt.tight_layout()
@@ -2418,8 +2444,15 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
 
     dfc['ED_consecutive [s]'] = dfc.groupby(['LCname', \
             'n_event'])['ED [s]'].shift(1).astype(float)
+    #dfc['nflare'] = dfc['n_event'] + dfc['order']
+    #dfc['nflare_consecutive'] = dfc.groupby(['LCname'])[ \
+    #            'nflare'].shift(1)#.astype(float)
+
     dfi['ED_consecutive [s]'] = dfi.groupby('LCname')[ \
                     'ED [s]'].shift(1).astype(float)
+    #dfi['nflare_consecutive'] = dfi.groupby(['LCname'])[ \
+    #            'n_event'].shift(1)#.astype(float)
+
     #dfc.dropna(subset='ED_consecutive [s]', inplace=True)
     #dfi.dropna(subset='ED_consecutive [s]', inplace=True)
 
@@ -2430,8 +2463,7 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
                     ['LCname'])['ED [s]'].shift(1).astype(float)
     #dfsingle.dropna(subset='ED_consecutive [erg]', inplace=True)
 
-
-    # Add non-consecutive isolated single-peak flares
+    # Add non-consecutive isolated single-peak flares - at least 1 hr separation
     #flag_sep = dfcomplex['seq'] > 1
     #flag = np.logical_and(dfcomplex['peaks_per_event'] == 1, flag_sep)
     #dfsingle_sep = dfcomplex[flag]
@@ -2511,7 +2543,7 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
         # How many times is pr larger than the non-consecutive isolated
         # flare baseline?
         pr_baseline = np.sum(np.array(pr_iter) >= pr[0])/len(pr_iter)
-        print('Delta p (this sample) - isolated non-consecutive flares:', \
+        print('Delta p (this sample - isolated non-consecutive flares):', \
                     pr_baseline)
     fig.supxlabel('ED [s]', fontsize=16)
     fig.supylabel('Consecutive ED [s]', fontsize=16)
