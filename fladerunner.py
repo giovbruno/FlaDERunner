@@ -634,24 +634,30 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     nfl = nfl[flagT]
 
     # For publication
-    psave = ['ticname', 'designation', 'LCname', 'Peak amplitude', \
+    psave = ['TIC', 'Gaia DR3', 'LCname', 'Peak amplitude', \
         'Peak luminosity [erg s$^{-1}$]', 'Duration [min]', \
         'efolding_time [min]', 'FWHM [min]', \
-        'Energy [erg]', 'ED [s]', \
-        'Peak time [BTJD]', 'Impulsiveness [min$^{-1}$]', \
-        'n_event', 'redchi2', \
-        'peaks_per_event', 'Flare type', 'waiting_time', \
-        'phot_var', 'tessmag', \
-        'Prot', 'FAP', 'distance', 'scatter_SN' , 'Aspot [Asun]', \
+        'Energy [erg]', 'ED [s]', 'Peak time [BTJD]', \
+        'Waiting_time [min]', 'Impulsiveness [min$^{-1}$]', \
+        'n_event', 'peaks_per_event', 'redchi2', \
+        'Flare type', 'phot_var', 'tessmag', \
+        'Prot', 'FAP', 'distance', 'scatter_SN', 'Aspot [Asun]', \
         'Spectral type', 'Teff [K]', 'logg', 'feh', 'mass', 'radius',
-        'tau_conv_wright', 'Ro_wright', 'flares_per_target',
-        'time_on_target', 'rate_per_target']
+        'tau_conv_wright', 'flares_per_target', 'time_on_target']
 
-    #df[psave].to_csv(resfolder + 'singlepeak_parameters.csv', index=False)
-    #dfc[psave].to_csv(resfolder + 'multipeak_parameters.csv', index=False)
+    df1 = copy.deepcopy(df)
+    dfc1 = copy.deepcopy(dfc)
+    for dd in [df1, dfc1]:
+        dd.rename(columns={'ticname':'TIC', 'designation':'Gaia DR3', \
+            'waiting_time':'Waiting_time [min]'}, inplace=True)
+        dd['TIC'] = dd['TIC'].str.replace('TIC', '', regex=False)
+        dd['Gaia DR3'] = dd['Gaia DR3'].str.replace('Gaia DR3', \
+                    '', regex=False)
+    df1[psave].to_csv(resfolder + 'singlepeak_parameters.csv', index=False)
+    dfc1[psave].to_csv(resfolder + 'multipeak_parameters.csv', index=False)
 
     ### Trends
-    Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder)
+    #Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder)
     return
     #compare_Ro(df, resfolder)
     #flaring_vs_nonflaring_stars(df, nfl, resfolder)
