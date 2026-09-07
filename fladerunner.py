@@ -428,7 +428,7 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
                             distance = df_stassun['Dist'][tgd].values[0]*units.parsec
                             params_s['distance'].append(distance.to(units.m).value)
                             params_s['E_B-V'].append( \
-                                                df_stassun['E_B-V_'][tgd].values[0])
+                                    df_stassun['E_B-V_'][tgd].values[0])
                             mag = header['TESSMAG']
                             flare.get_stellar_luminosity('TESS', mag, distance)
                             params_s['Peak luminosity [erg s$^{-1}$]'].append( \
@@ -636,20 +636,23 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     # For publication
     psave = ['ticname', 'designation', 'LCname', 'Peak amplitude', \
         'Peak luminosity [erg s$^{-1}$]', 'Duration [min]', \
-        'efolding_time [min]', 'FWHM [min]', 'full_FWHM [min]', \
+        'efolding_time [min]', 'FWHM [min]', \
         'Energy [erg]', 'ED [s]', \
         'Peak time [BTJD]', 'Impulsiveness [min$^{-1}$]', \
-        'n_event', 't12', 'redchi2', 'total_efolding', \
+        'n_event', 'redchi2', \
         'peaks_per_event', 'Flare type', 'waiting_time', \
-        'Teff [K]', 'logg', 'feh', 'radius', 'phot_var', 'tessmag', \
-        'Prot', 'FAP', 'distance', 'E_B-V',  'scatter_SN' , 'Aspot [Asun]', \
-        'Spectral type', 'mass', \
-        'tau_conv_wright', 'Ro_wright',  'flares_per_target',
+        'phot_var', 'tessmag', \
+        'Prot', 'FAP', 'distance', 'scatter_SN' , 'Aspot [Asun]', \
+        'Spectral type', 'Teff [K]', 'logg', 'feh', 'mass', 'radius',
+        'tau_conv_wright', 'Ro_wright', 'flares_per_target',
         'time_on_target', 'rate_per_target']
 
-    ### Trends
-    #Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder)
+    #df[psave].to_csv(resfolder + 'singlepeak_parameters.csv', index=False)
+    #dfc[psave].to_csv(resfolder + 'multipeak_parameters.csv', index=False)
 
+    ### Trends
+    Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder)
+    return
     #compare_Ro(df, resfolder)
     #flaring_vs_nonflaring_stars(df, nfl, resfolder)
     #flare_rate_per_target(pd.concat([df, dfc[complex]]), resfolder)
@@ -729,14 +732,14 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     #     r'$\log g$', r'$\log$ amplitude', \
     #     resfolder)
 
-    consecutive_flare_stats(df, dfc, resfolder)
+    #consecutive_flare_stats(df, dfc, resfolder)
 
     #segment_regression(pd.concat([df, dfc[complex]]), 'log_ED', resfolder, \
     #    labelx=r'$\log Ro$', labely=r'$\log$ ED', samesize=False)
     #segment_regression(pd.concat([df, dfc[complex]]), 'rate_per_target', \
     #                resfolder, labelx=r'$\log Ro$', \
     #                labely=r'$\log$ Flares (star day)$^{-1}$')
-    return
+
     #search_dragonking(dfc, resfolder)
     #search_dragonking(df, resfolder, endname='_distributions_allsingle')
 
@@ -2298,7 +2301,7 @@ def Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder):
                 hue="Spectral type", palette=palette)
     #                multiple="dodge", bins=5, shrink=.8)
     plt.xlabel(r'$P_\mathrm{rot}$ [days]', fontsize=14)
-    plt.ylabel(r'$\tau_c$ [days]', fontsize=14)
+    plt.ylabel(r'$\tau_\mathrm{conv}$ [days]', fontsize=14)
     #plt.yscale('log')
     plt.tight_layout()
     plt.legend(loc='upper right')
@@ -2340,7 +2343,7 @@ def peaks_vs_ro(df, resfolder):
 
 def consecutive_flare_stats(df, dfcomplex, resfolder):
 #
-    def permutated_skew(df, par, refvalue, niter=10000):
+    def permutated_skew(df, par, refvalue, niter=1000):
         '''
         How likely is it that a random selection of ratios shows the same level of
         asymmetry?
@@ -2382,10 +2385,12 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
         # Start with consecutive isolated flares
         dfi['normalized_' + par] \
             = np.log10(dfi.groupby(['LCname'])[par].shift(1) / dfi[par])
-        stat_i = abs(stats.skew(dfi['normalized_' + par], nan_policy='omit'))
+        skew = stats.skew(dfi['normalized_' + par], nan_policy='omit')
+        stat_i = abs(skew)
         #stat_i = np.nansum(dfi['normalized_' + par] < 0.)/len(dfi)
         pi = permutated_skew(dfi, par, stat_i)
-        print(par, '- p-value for isolated consecutive flares:', pi)
+        print(par, '{}, {}, skew and p-value for isolated consecutive flares'.format( \
+                        skew, pi))
 
         if m == 0:
             label = 'Consecutive single-peak ({})'.format( \
@@ -2405,12 +2410,13 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
                 label = 'Peak no. {} to {} ({})'.format(order + 1, order, np.sum(flag))
             else:
                 label = 'Peak no. {} to {}'.format(order + 1, order)
-            stat_c[order] = abs(stats.skew(dfc['normalized_' + par][flag], \
-                            nan_policy='omit'))
+            skew = stats.skew(dfc['normalized_' + par][flag], \
+                            nan_policy='omit')
+            stat_c[order] = abs(skew)
             #stat_c[order] = np.nansum(dfc['normalized_' + par][flag] < 0.)/len(dfc)
             pc = permutated_skew(dfc, par, stat_c[order])
-            print(par, '- p-value for peak no. {} vs {} flares: {}'.format(\
-                        order + 1, order, pc))
+            print(par, '{}, {}, skew and p-value for peak no. {} vs {} flares'.format(\
+                        skew, pc, order + 1, order))
             ax[m].hist(dfc['normalized_' + par][flag], log=False, histtype='step', \
                 label=label, \
                 density=True, cumulative=False, bins=logbins)
@@ -2427,7 +2433,7 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
     plt.tight_layout()
     plt.savefig(resfolder + 'consecutive_flare_stats_PDF.pdf')
     plt.close()
-
+    set_trace()
     for par in pars:
         print('\n', par)
         for order in range(1, dfc['order'].max() + 1):
