@@ -496,10 +496,6 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
                 params['radius'] == -999., params['logg'] == None, \
                 params['Teff [K]'] == -999., params['phot_var'] < 0.))
 
-    #flag_bad = np.logical_or.reduce((params['radius'] == -999., params['logg'] #== None,\
-    #    params['Teff [K]'] == -999., params['phot_var'] < 0.))
-    #set_trace()
-
     print('\nNo stellar params: {:.2f}%'.format( \
             np.sum(flag_bad)/len(flag_bad)*100.))
     for p in parameters:
@@ -624,8 +620,6 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
     flag = np.isinf(dfc['log_efolding_time'])
     dfc = dfc[~flag]
 
-    #df.drop_duplicates(subset='ticname')[['ticname', 'designation', 'Teff [K]', #'logg', 'feh', 'radius', 'mass', 'Prot', 'FAP', 'ra', 'dec', 'tessmag', #'phot_g_mean_mag', 'Ro_wright']].to_csv('/home/giovanni/Desktop/#flaring_stars.csv', index=False)
-
     # Filter non-flaring stars too
     nfl = get_non_flaring_stars(resfolder, maxT, maxR, maxTmag, maxProt, maxFAP)
     nfl.rename(columns={'RADIUS':'radius', 'Prot_[days]':'Prot', \
@@ -658,7 +652,6 @@ def get_results(resfolder, min_flares=100, sectors=range(27, 88), \
 
     ### Trends
     #Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder)
-    return
     #compare_Ro(df, resfolder)
     #flaring_vs_nonflaring_stars(df, nfl, resfolder)
     #flare_rate_per_target(pd.concat([df, dfc[complex]]), resfolder)
@@ -831,23 +824,7 @@ def compare_Ro(df, resfolder):
     plt.tight_layout()
     plt.savefig(resfolder + 'Ro_cranmer_vs_metcalfe_flaring.pdf')
     plt.close()
-    '''
-    gaia_x_tmass = pd.read_csv('/home/giovanni/Projects/flares_TESS_fullsample/literature_data/flaring_stars_gaiax2mass.csv')
-    gaia_x_tmass.dropna(subset=['V', 'k_m'], inplace=True)
-    gaia_x_tmass.rename( \
-            columns={'designation':'2mass_id', 'source_id':'designation'}, \
-            inplace=True)
-    df['designation'] = df['designation'].str.replace( \
-                        'Gaia DR3 ', '').astype(int)
-    itsec = pd.merge(gaia_x_tmass, df, on='designation', how='inner')
-    itsec['tau_conv_wright'] = compute_tau_conv_wright(itsec['V'], \
-                itsec['k_m'])
-    itsec.drop_duplicates(subset='designation', inplace=True)
 
-    VK = itsec['V'] - itsec['k_m']
-    '''
-
-    #labels = [r'$1.1 < V-K_s < 7.0$', 'Outside mag range']
     labels = [r'$0.08 < M/M_\odot < 1.33$', 'Outside mass range']
     df['tau_conv_wright'] = compute_tau_conv_wright_mass(df['mass'])
     dff = df[df['tau_conv_bonanno'] < 1000.]
@@ -855,9 +832,7 @@ def compare_Ro(df, resfolder):
     for i, k in enumerate([flag, ~flag]):
         plt.plot(dff['tau_conv_bonanno'][k], dff['tau_conv_wright'][k], '.', \
                     label=labels[i])
-    #xth = np.linspace(10, 500, 1000)
-    #plt.plot(xth, xth, label=r'$y=x$')
-    #plt.loglog(xth, xth/10, label=r'$y=0.1x$')
+
     plt.legend()
     plt.xlabel(r'$\tau_c$ Bonanno+25', fontsize=14)
     plt.ylabel(r'$\tau_c$ Wright+18', fontsize=14)
@@ -877,8 +852,8 @@ def simulate_pl_size(resfolder):
     theo = powerlaw.Power_Law(xmin=1e30, parameters=[a])
 
     xx, yy, xerr, yerr, q = [], [], [], [], []
-    N = [50, 100, 200, 500, 1000]#, 2000]
-    for samplesize in N:#, 5000, 10000]:
+    N = [50, 100, 200, 500, 1000]
+    for samplesize in N:
         print('Sample size:', samplesize)
         alpha = []
         sigma = []
@@ -886,13 +861,11 @@ def simulate_pl_size(resfolder):
         x2 = []
         for iter in range(1000):
             simuldata = theo.generate_random(samplesize)
-            #simuldata = simuldata[simuldata > 10**30.5]
             fit = powerlaw.Fit(simuldata, verbose=False)
             alpha.append(fit.alpha)
             sigma.append(fit.sigma)
             x1.append(fit.xmin)
             x2.append(simuldata.max())
-        #perc = np.percentile(alpha, [15.9, 50., 84.1])
         perc1 = np.percentile(alpha, [15.9, 50., 84.1])
         dperc1 = np.diff(perc1)[::-1]
         perc2 = np.percentile(np.log10(x1), [15.9, 50., 84.1])
@@ -970,8 +943,6 @@ def complex_flare_fraction(df, resfolder):
         for j, ro_i in enumerate(dd['Ro_bins'].unique()):
             y, yerr = [], []
             flag_ro = dd['Ro_bins'] == ro_i
-            #label = r'${:.1f} \leq \log Ro \leq ${:.1f}'.format( \
-            #    np.log10(ro_i.left), np.log10(ro_i.right))
             if np.sum(flag_ro) == 0:
                 continue
             for i, xi in enumerate(x):
@@ -1140,9 +1111,6 @@ def simple_complex_fit(df1, df2, df3, par1, par2, label_par1, label_par2, \
 
     dftemp = pd.concat([df1, df2, df3])
 
-    #ax = sns.displot(dftemp, x=par1, y=par2, hue='Flare type', \
-    #        palette='colorblind')# fill=False)#, levels=1, linewidths=1)
-            #marginal_kws=dict(fill=True, element='stack'))
     fig, ax = plt.subplots(figsize=(6, 3))
     for i, dd in enumerate([df1, df2, df3]):
         bin_edges = np.linspace(dd[par1].min() + 0.1*i, dd[par1].max(), 15)
@@ -1152,20 +1120,12 @@ def simple_complex_fit(df1, df2, df3, par1, par2, label_par1, label_par2, \
         ax.errorbar(bins, binned_stats['mean'], yerr=binned_stats['std'], \
                     fmt='o', color=colors[i], capsize=2)
 
-    #sns.scatterplot(dftemp, x=par1, y=par2, hue='Flare type', \
-    #        alpha=0.5, palette='colorblind', s=10, style='Flare type')
-
     labels = ['IF', 'SFC', 'CF']
     for i, dd in enumerate([df1, df2, df3]):
         x = dd[par1]
         y = dd[par2]
-        #pfit = lmfit.Parameters()
-        #pfit.add('a', vary=True, min=-100., max=100.)
-        #pfit.add('b', vary=True, min=-100., max=100.)
-        #pfit.add('c', vary=True, min=-100., max=100.)
         rng = np.random.default_rng()
         a, b = [], []
-        #linfit = lambda a, b, c, x, y = y - np.polyval([a, b, c], x)
         for j in range(1000):
             xi, yi = rng.choice([x, y], size=len(x), axis=1)
             ai, bi = np.polyfit(xi, yi, deg=1)
@@ -1183,14 +1143,6 @@ def simple_complex_fit(df1, df2, df3, par1, par2, label_par1, label_par2, \
         xTh = np.linspace(x.min(), x.max(), 100)
         ax.plot(xTh, np.polyval(meds, xTh), color=colors[i], \
                     label=labels[i], linewidth=3)
-        #ax.plot(x, y, '.')
-        # BIC, assuming uniform uncertainties and two free parameters
-        # nvarys = 2
-        # omc = y - np.polyval(meds, x)
-        # N = len(y)
-        # chi2 = np.sum(omc**2)
-        # bic = N*np.log(chi2/N) + np.log(N)*nvarys
-        # print('BIC for fit:', bic)
 
         # Compute correlation coefficient for the subset without outliers
         R, p = stats.spearmanr(x, y)
@@ -1199,8 +1151,6 @@ def simple_complex_fit(df1, df2, df3, par1, par2, label_par1, label_par2, \
     plt.legend()
     ax.set_xlabel(label_par1, fontsize=14)
     ax.set_ylabel(label_par2, fontsize=14)
-    #plt.xlim(dftemp[par1].min() - 0.05, dftemp[par1].max() + 0.05)
-    #plt.ylim(dftemp[par2].min() - 0.05, dftemp[par2].max() + 0.05)
     plt.tight_layout()
     plt.savefig(resfolder + par2.split(' [')[0] + '_vs_' + par1 + '.pdf')
     plt.close()
@@ -1338,7 +1288,7 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
     fig2, ax2 = plt.subplots()
     fig3, ax3 = plt.subplots()
     if 'Energy' in par:
-        fig4, ax4 = plt.subplots()#figsize=(6, 4))
+        fig4, ax4 = plt.subplots()
     else:
         fig4, ax4 = plt.subplots(figsize=(6, 3))
     ax4min, ax4max = np.inf, -np.inf
@@ -1377,7 +1327,6 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
             pfit = lmfit.Parameters()
             pfit.add('a', vary=True, min=-10., max=10, value=0.)
             pfit.add('b', vary=True, min=-10, max=10, value=0.)
-            #pfit.add('c', vary=False, min=-10, max=10, value=0.)
             result = lmfit.minimize(residual_line, pfit, \
                        args=(x, y, yerr), calc_covar=True, nan_policy='omit')
 
@@ -1440,14 +1389,12 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
         R, pv = stats.spearmanr(ddd['q'], ddd['nobs'])
         print('Spearman corrcoeff between nobs' + ' and inertial range: ' \
                         + str(R) + ' ' + str(pv))
-        #pfit['c'].vary = True
         # One fit for all alphas
         qfit = np.concatenate((q1, q2, q3))
         yfit = np.concatenate((y1, y2, y3))
         yerrfit = np.concatenate((yerr1, yerr2, yerr3))
         result = lmfit.minimize(residual_line, pfit, \
             args=(qfit, yfit, yerrfit), calc_covar=True)
-            #args=(ddd['q'], y, yerr), calc_covar=True)
 
         for spi, sp in enumerate(sptype):
             flag = ddd['Spectral type'] == sp
@@ -1459,9 +1406,8 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
                 label = ''
             ax4.errorbar(ddd['q'][flag], y[flag], yerr=yerr[flag], \
                 fmt=markers[spi], c=colors[tpi], label=label, \
-                #sp + ' ' + labels[tpi], \
                 capsize=2)
-        fitpars = [result.params['a'], result.params['b']]#, result.params['c']]
+        fitpars = [result.params['a'], result.params['b']]
         xTh = np.linspace(ddd['q'].min(), ddd['q'].max(), 100)
         print(par, 'fit alpha vs q:', lin_fit_labels(result, labels[tpi]))
         if xTh.min() < ax4min:
@@ -1469,13 +1415,11 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
         if xTh.max() > ax4max:
             ax4max = xTh.max()
 
-        #if 'Energy' in par:
-        #    ax4.plot(xTh, np.zeros(len(xTh)) + 2., 'k--')
-        # prediction from FD SOC mdoel
+        # Prediction from FD SOC mdoel
         if tpi == 0:
             th = target_pars['FD_pred']
             ax4.plot([0.1, 4.], [th, th], 'k--', label='FD SOC prediction')
-        ax4.plot(xTh, np.polyval(fitpars, xTh), c='k')#c=colors[tpi])#, label='$p$' + pv)
+        ax4.plot(xTh, np.polyval(fitpars, xTh), c='k')
         ax4.set_xlabel(r'$q$', fontsize=14)
         if 'Energy' in par:
             partext = 'Energy '
@@ -1490,7 +1434,6 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
             partext = copy.copy(par)
         ax4.set_ylabel(partext.split('[')[0] + ll, fontsize=14)
         ax4.set_xlim(ax4min - 0.1, ax4max + 0.1)
-        #ax4.set_xlim(0.5, 2.8)
         fig4.tight_layout()
 
         # Print estimate
@@ -1498,7 +1441,7 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
             print(labels[tpi], 'Estimate for alpha at max x12: ', \
                         np.polyval(fitpars, ddd['q'].max()))
 
-        if 'alpha_bootstrap' in ddd.keys() and not bootstrap:# and 'Energy' in par:
+        if 'alpha_bootstrap' in ddd.keys() and not bootstrap:
             labx = ['$q$'] #Sample size
             if tpi == 0:
                 label1 = 'Bootstrapped'
@@ -1507,7 +1450,7 @@ def plot_target_results(target_pars1, target_pars2, target_dist1, \
                 label1 = ''
                 label2 = ''
             from matplotlib import ticker
-            for pi, px in enumerate([ddd['q']]):#, ddd['nobs']]):
+            for pi, px in enumerate([ddd['q']]):
                 ax5.errorbar(px, ddd['alpha_bootstrap'], fmt='bo', \
                     yerr=ddd['sigma_bootstrap'], capsize=2, label=label1)
                 ax5.errorbar(px, ddd['alpha'], fmt='o', color='orange', \
@@ -1611,33 +1554,6 @@ def compute_tau_conv_wright(V, K):
 
 def compute_tau_conv_wright_mass(mstar):
     return 10**(2.33 - 1.50*mstar + 0.31*mstar**2)
-
-
-#def bic_distribution(fitd, distribution_type):
-#    '''
-#    Computes the Bayesian Information Criterion for a distribution fitted with
-#    powerlaw.
-#    '''
-#    lkf = powerlaw.likelihood_function_generator(distribution_type, False, \
-#                    xmin=fitd.xmin, xmax=fitd.xmax)
-#    set_trace()
-#    if distribution_type == 'power_law':
-#        lk = lkf([fitd.power_law.alpha], fitd.data)
-#        npars = 1
-#    elif distribution_type == 'exponential':
-#        lk = lkf([fitd.exponential.alpha], fitd.data)
-#        npars = 1
-#    elif distribution_type == 'lognormal':
-#        lk = lkf([fitd.lognormal.parameter1, fitd.lognormal.parameter2], \
-#            fitd.data)
-#        npars = 2
-#    elif distribution_type == 'truncated_power_law':
-#        lk = lkf([fitd.truncated_power_law.parameter1, \
-#            fitd.truncated_power_law.parameter2], fitd.data)
-#        npars = 2
-#
-#   bic = npars*np.log(len(fitd.data)) - 2.*np.sum(np.log(lk))
-#   return bic
 
 def bic_distribution(fitd, distribution_type):
     '''
@@ -1760,35 +1676,15 @@ def segment_regression(df, par, resfolder, labelx='', labely='', samesize=False)
 
         model = fit2.predict(xx)
 
-        #res = lmfit.minimize(residuals_brokenpl, pfit, args=(x, y))
-        #print('BIC PL:', res.bic)
-
-        #fits.append(result)
-        #df_est = binsreg.binsreg(data=df[flag], x='log_Ro', y=par, noplot=True)
-        #bin_edges = np.linspace(-2.5 + ift*0.1, 0.3 + ift*0.1, 20)
         lro = df[flag]['log_Ro']
         bin_edges = np.linspace(lro.min(), lro.max(), 15)
         df['bins'] = pd.cut(df[flag]['log_Ro'], bins=bin_edges)#, retbins=True)
         binned_stats = df[flag].groupby('bins')[par].agg(['mean', 'std'])
         bins = 0.5*(bin_edges[1:] + bin_edges[:-1])
 
-        #ax.plot(x, y, '.')
         ax.errorbar(bins, binned_stats['mean'], yerr=binned_stats['std'], \
                     fmt='o', color=colors[ift], capsize=2)
         ax.plot(xx, model, linewidth=2, label=ft)
-
-        # Comparison with linear fit
-        #pfit2 = lmfit.Parameters()
-        #pfit2.add('a', value=0., min=-10., max=10.)
-        #pfit2.add('b', value=0., min=0., max=1000.)
-        #linres = lmfit.minimize(residual_line, pfit2, args=(np.log10(x), np.log10(y), \
-        #                np.ones(len(y))))
-        #xth = np.linspace(df['Ro_wright'].min(), df['Ro_wright'].max(),1000).tolist()
-        #model = np.polyval(linres.params, np.log10(xth))
-        #print('BIC LIN:', linres.bic)
-        #ax.loglog(xth, 10**model)
-
-        #print(pw_fit.summary())
 
     plt.xlabel(labelx, fontsize=14)
     plt.ylabel(labely, fontsize=14)
@@ -1854,12 +1750,10 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
         fit_nm = powerlaw.Fit(dfc[flag]['Energy [erg]'], verbose=False)
         x, y = fit_nm.ccdf(original_data=False)
         yth = fit_nm.power_law.ccdf()
-        part1 = len(y) - 10#int(len(y)*0.9)
-        #print(len(y), part1)
+        part1 = len(y) - 10
         ydiff = y - yth
-        #flag = ydiff[part1:] > 0.
         obs_diff, pval = permutation_test_variance_diff(ydiff[:part1], \
-                        ydiff[part1:])#[flag])
+                        ydiff[part1:])
         pvals.append(pval)
         if pval < 0.05:
             print('DK events candidate with p < 0.05:', tg)
@@ -1889,8 +1783,7 @@ def search_dragonking(dfc, resfolder, par='Energy [erg]', min_flares=100, \
             flag = dftot['tgs'] == t
             plt.plot([dftot['pvals_IFCF'][flag], dftot['pvals_IFSFC'][flag]], \
                         [t, t], 'k')
-    #plt.plot([0.05, 0.05], [0, len(labels)], 'r--', label=r'$p=0.05$')
-    plt.legend()#loc='lower right')
+    plt.legend()
     plt.tight_layout()
     plt.savefig(resfolder + par + endname + '_diff.pdf')
     plt.close()
@@ -1951,12 +1844,11 @@ def waiting_time_distribution(df, resfolder, fltypes, lab, set_logbins=None, \
         ncomplex = np.sum(df[flag]['peaks_per_event'] > 1)
         totflares = np.sum(flag)
         perc_complex = ncomplex/totflares*100.
-        label = ''#' ({:.1f}%'.format(perc_complex) + ' ' + lab + ')'
+        label = ''
 
         # Try two exponentials
         distrib = distrib.tolist()
 
-        #fit_ew = stats.exponweib.fit(distrib)
         fit_wm = stats.weibull_min.fit(distrib)
         # Bootstrap for uncertainties
         if pdf:
@@ -1997,13 +1889,9 @@ def waiting_time_distribution(df, resfolder, fltypes, lab, set_logbins=None, \
                     + labeladd)
         if yy[0].max() > ymax:
             ymax = yy[0].max()
-        #xth = lambda a, x: stats.exponweib.ppf(a, x[0], x[1], loc=x[2], \
-        #                                  scale=x[3])
         xth = lambda a, x: stats.weibull_min.ppf(a, x[0], loc=x[1], \
                                           scale=x[2])
         x_wm = np.linspace(xth(0.001, fit_wm), xth(0.999, fit_wm), 300000)
-        #pdf_ew = stats.exponweib.pdf(x_ew, fit_ew[0], fit_ew[1], \
-        #        loc=fit_ew[2], scale=fit_ew[3])
         pdf_wm = stats.weibull_min.pdf(x_wm, fit_wm[0], loc=fit_wm[1], \
                 scale=fit_wm[2])
 
@@ -2117,7 +2005,6 @@ def sky_positions(df, resfolder):
     import astropy.coordinates as coord
     fig = plt.figure(figsize=(8,8))
     ax = fig.add_subplot(111, projection="mollweide")
-    #ax2 = fig.add_subplot(211, projection="mollweide")
     ra = coord.Angle(df['ra'].values*units.degree)
     ra = ra.wrap_at(180*units.degree)
     dec = coord.Angle(df['dec'].values*units.degree)
@@ -2153,7 +2040,7 @@ def energy_spotarea(df, resfolder):
         return (x*sun_area.value)*3000.
 
     def Mx_to_norm_Aspot(x):
-        return (x/sun_area.value)/3000.#/1000.
+        return (x/sun_area.value)/3000.
 
     f = 0.1
     AspotTh = np.logspace(-5., -0.25)*sun_area
@@ -2197,16 +2084,6 @@ def energy_spotarea(df, resfolder):
         dd['Dataset'] = [vv[i]]*len(dd)
     dfplot = pd.concat([dfthis, df_oka, df_notsu])
 
-    #custom_palette = {'Kepler superflares': 'red', 'Solar flares': 'green', \
-    #        'This study': 'blue'}
-    #sns.scatterplot(df_oka, x=r'Spotted area [$A_\odot$]', y='Energy [erg]', \
-    #    ax=ax, palette='colorblind')
-    #sns.scatterplot(df_notsu, x=r'Spotted area [$A_\odot$]', y='Energy [erg]', \
-    #    ax=ax, palette='colorblind')
-    #markers = { 'This study': '.', 'Kepler superflares': 'x', 'Solar flares': '+' }
-    #sns.scatterplot(dfplot, x=r'Spotted area [$A_\odot$]', y='Energy [erg]', \
-    #    hue='mass_bins', style='Dataset', ax=ax, palette='colorblind')#, \
-     #   markers=markers)
     ax.scatter(df_oka[r'Spotted area [$A_\odot$]'], df_oka['Energy [erg]'], \
                 marker='x', c='m', label='Kepler superflares', alpha=0.2)
     ax.scatter(df_notsu[r'Spotted area [$A_\odot$]'], df_notsu['Energy [erg]'], \
@@ -2236,11 +2113,6 @@ def flaring_vs_nonflaring_stars(df, nfl, resfolder):
     labels = [r'$T_\mathrm{eff}$ [K]', r'$Ro$', r'Spotted area [$A_\odot$]', \
         'TESS magnitude']
 
-    #def forward(x):
-    #    return x/x.max()*100.
-    #def inverse(x):
-    #    return x*x.max()/100.
-
     for pi, p in enumerate(['Teff [K]', 'Ro_wright', 'Aspot [Asun]', 'tessmag']):
         if pi == 0 or pi == 3:
             bin_edges = 7
@@ -2257,11 +2129,8 @@ def flaring_vs_nonflaring_stars(df, nfl, resfolder):
                     color=['lightgrey', 'dimgrey'], bins=bin_edges, log=True)
         ax2 = ax.twinx()
         ax2.plot(bin_edges[:-1] + 0.5*np.diff(bin_edges), hh2/(hh + hh2)*100., 'mo-')
-        #        label='Flaring percentage')
         ax.set_xlabel(labels[pi], fontsize=14)
         ax.set_ylabel('Stars', fontsize=14)
-        #secax = ax.secondary_yaxis('right', functions=(forward, inverse))
-        #secax.set_ylabel('Flaring percentage', fontsize=14)
         ax2.set_ylabel('Flaring percentage', fontsize=14)
         ax2.set_ylim(0, 105)
         if pi < 2:
@@ -2285,14 +2154,11 @@ def Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder):
     pars = ['radius', 'Teff [K]', 'Ro_wright', 'Ro_bins', 'mass', 'mass_bins', \
             'Prot', 'Spectral type', 'tessmag', 'tau_conv_wright']
     df_tot = pd.concat([df_unique[pars], nfl_unique[pars]])
-    #ro_bins = [0., 0.1, 0.5, np.inf]
-    #df_tot['Ro_bins'] = pd.cut(df_tot['Ro_wright'], bins=ro_bins, \
-    #    labels=[r'$Ro \leq 0.1$', r'$0.1 < Ro \leq 0.5$', r'$Ro > 0.5$'])
     df_tot.rename(columns={'mass_bins':'Mass', 'Ro_bins':'$Ro$'}, inplace=True)
     palette = ['darkorange', 'limegreen', 'darkblue']
     sns.scatterplot(df_tot, x='radius', y='Teff [K]', s=30, hue='$Ro$', \
             style='Mass', markers=['.', 'o'], \
-            palette=palette)#palette='colorblind')
+            palette=palette)
     plt.xlabel(r'$R_\star [R_\odot]$', fontsize=14)
     plt.ylabel(r'$T_\mathrm{eff}$ [K]', fontsize=14)
     plt.legend()
@@ -2305,10 +2171,8 @@ def Tstar_vs_Rstar_vs_Ro(df, nfl, resfolder):
     plt.figure(figsize=(6, 3))
     sns.scatterplot(data=df_tot, x="Prot", y='tau_conv_wright', \
                 hue="Spectral type", palette=palette)
-    #                multiple="dodge", bins=5, shrink=.8)
     plt.xlabel(r'$P_\mathrm{rot}$ [days]', fontsize=14)
     plt.ylabel(r'$\tau_\mathrm{conv}$ [days]', fontsize=14)
-    #plt.yscale('log')
     plt.tight_layout()
     plt.legend(loc='upper right')
     plt.savefig(resfolder + 'rot_periods.pdf')
@@ -2348,7 +2212,7 @@ def peaks_vs_ro(df, resfolder):
     return
 
 def consecutive_flare_stats(df, dfcomplex, resfolder):
-#
+
     def permutated_skew(df, par, refvalue, niter=1000):
         '''
         How likely is it that a random selection of ratios shows the same level of
@@ -2363,27 +2227,22 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
             random_ratio = np.log10(np.random.choice(df[par], size=l1) \
                 / np.random.choice(df[par], size=l1))
             stat_r.append(abs(stats.skew(random_ratio, nan_policy='omit')))
-            #stat_r.append(np.sum(random_ratio < 0.)/l1)
         pvalue = np.nansum(np.array(stat_r) >= refvalue)/niter
         return pvalue
 
     df.sort_values(['LCname', 'Peak time [BTJD]'], inplace=True)
-    #df.reset_index(inplace=True, drop=True)
     dfc = df[df['Flare type'] == 'SFC']
     dfc['order'] = dfc.groupby(['LCname', 'n_event']).cumcount()
 
     # Create a subset for only consecutive isolated or complex flares
-    #dfcomplex = df[df['Flare type'] == 'IF']
     dfcomplex.sort_values(['LCname', 'Peak time [BTJD]'], inplace=True)
     dfcomplex['seq'] = dfcomplex.groupby('LCname')['n_event'].diff()
     dfi = dfcomplex[dfcomplex['seq'] == 1]
-    #dfi.reset_index(inplace=True, drop=True)
 
     fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(12, 6))
     ax = ax.flatten()
     pars = ['Peak amplitude', 'Impulsiveness [min$^{-1}$]', \
             'Energy [erg]', 'efolding_time [min]']
-    #logbins = np.logspace(-3, 3, 20)
     logbins = np.linspace(-3, 3, 20)
     # Distributions to compare
     distribs = {}
@@ -2393,7 +2252,6 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
             = np.log10(dfi.groupby(['LCname'])[par].shift(1) / dfi[par])
         skew = stats.skew(dfi['normalized_' + par], nan_policy='omit')
         stat_i = abs(skew)
-        #stat_i = np.nansum(dfi['normalized_' + par] < 0.)/len(dfi)
         pi = permutated_skew(dfi, par, stat_i)
         print(par, '{}, {}, skew and p-value for isolated consecutive flares'.format( \
                         skew, pi))
@@ -2419,14 +2277,12 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
             skew = stats.skew(dfc['normalized_' + par][flag], \
                             nan_policy='omit')
             stat_c[order] = abs(skew)
-            #stat_c[order] = np.nansum(dfc['normalized_' + par][flag] < 0.)/len(dfc)
             pc = permutated_skew(dfc, par, stat_c[order])
             print(par, '{}, {}, skew and p-value for peak no. {} vs {} flares'.format(\
                         skew, pc, order + 1, order))
             ax[m].hist(dfc['normalized_' + par][flag], log=False, histtype='step', \
                 label=label, \
                 density=True, cumulative=False, bins=logbins)
-        #ax[m].set_xscale('log')
         if 'amplitude' in par:
             partext = par + ' '
         elif 'efolding_time' in par:
@@ -2449,39 +2305,23 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
                 # Compare first vs second in complex with consecutive isolated
                 pval = stats.ks_2samp(dfc[par][flagm].dropna(), \
                             dfi[par].dropna()).pvalue
-                print(str(order - 1), 'vs consecutive isolated:', pval)#, stat_i.pvalue)
+                print(str(order - 1), 'vs consecutive isolated:', pval)
             pval = stats.ks_2samp(dfc[par][flagm].dropna(), \
             dfc[par][flag].dropna()).pvalue
-            print(str(order), 'vs', str(order - 1), ': ', pval)#, skew_c[order].pvalue)
+            print(str(order), 'vs', str(order - 1), ': ', pval)
 
     dfc['ED_consecutive [s]'] = dfc.groupby(['LCname', \
             'n_event'])['ED [s]'].shift(1).astype(float)
-    #dfc['nflare'] = dfc['n_event'] + dfc['order']
-    #dfc['nflare_consecutive'] = dfc.groupby(['LCname'])[ \
-    #            'nflare'].shift(1)#.astype(float)
-
     dfi['ED_consecutive [s]'] = dfi.groupby('LCname')[ \
                     'ED [s]'].shift(1).astype(float)
-    #dfi['nflare_consecutive'] = dfi.groupby(['LCname'])[ \
-    #            'n_event'].shift(1)#.astype(float)
-
-    #dfc.dropna(subset='ED_consecutive [s]', inplace=True)
-    #dfi.dropna(subset='ED_consecutive [s]', inplace=True)
 
     # Add consecutive isolated single-peak flares
     dfsingle = dfcomplex[np.logical_and( \
         dfcomplex['peaks_per_event'] == 1, dfcomplex['seq'] == 1)]
     dfsingle['ED_consecutive [s]'] = dfsingle.groupby( \
                     ['LCname'])['ED [s]'].shift(1).astype(float)
-    #dfsingle.dropna(subset='ED_consecutive [erg]', inplace=True)
 
     # Add non-consecutive isolated single-peak flares - at least 1 hr separation
-    #flag_sep = dfcomplex['seq'] > 1
-    #flag = np.logical_and(dfcomplex['peaks_per_event'] == 1, flag_sep)
-    #dfsingle_sep = dfcomplex[flag]
-    #dfsingle_sep['Energy_consecutive [erg]'] = dfsingle_sep.groupby( \
-    #        ['LCname'])['Energy [erg]'].shift(1).astype(float)
-    #dfsingle_sep.dropna(subset='Energy_consecutive [erg]', inplace=True)
     flag = dfcomplex['peaks_per_event'] > 0
     dfsingle_sep = dfcomplex[flag].sample(n=5000, replace=False)
     dfsingle_sep['ED_consecutive [s]'] = dfsingle_sep.groupby( \
@@ -2518,11 +2358,7 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
     p_value = count/niter
     pr_sep_mean = np.mean(pr_iter)
     pr_sep_std = np.std(pr_iter)
-    #dfsingle_sep['Energy_consecutive [erg]'] = dfsingle_sep['Energy [erg]'].shift(1).astype(float)
-    #dfsingle_sep.dropna(subset='ED_consecutive [erg]', inplace=True)
 
-    #alphas = [0.3, 1., 0.3, 0.3]
-    #markers = ['.', '.', '.', '.']
     oks = []
     prs = []
     labels = ['Multi-peak components', 'Consecutive single-peak', \
@@ -2564,35 +2400,6 @@ def consecutive_flare_stats(df, dfcomplex, resfolder):
     plt.savefig(resfolder + 'consecutive_flare_ED.pdf')
     plt.close()
 
-    ''''
-    # Do the two pair distributions come from the same one?
-    # Compare distance of Spearman correlation coeffcients
-    T_obs = abs(prs[0] - prs[1])
-    set_trace()
-    combined = pd.concat([dfi[['ED [s]', 'ED_consecutive [s]']][oks[0]], \
-        dfc[['ED [s]', 'ED_consecutive [s]']][oks[1]]]).reset_index(drop=True)
-    combined = np.array(combined)
-
-    rng = np.random.default_rng()
-    count = 0
-    n_permutations = 1000
-    for _ in range(n_permutations):
-        perm_indices = rng.permutation(len(combined))
-        # Split permuted data into two groups
-        perm_sample1 = combined[perm_indices[:len(dfi)]]
-        perm_sample2 = combined[perm_indices[len(dfi):]]
-
-        # Calculate correlation difference in permuted samples
-        r1, _ = stats.spearmanr(perm_sample1[:, 0], perm_sample1[:, 1])
-        r2, _ = stats.spearmanr(perm_sample2[:, 0], perm_sample2[:, 1])
-        T_perm = abs(r1 - r2)
-
-        if T_perm >= T_obs:
-            count += 1
-    p_value = count / n_permutations
-    print(f"Observed correlation difference: {T_obs:.4f}")
-    print(f"p-value from permutation test: {p_value:.4f}")
-    '''
     return
 
 def flare_rate_per_target(df, resfolder):
@@ -2624,25 +2431,12 @@ def flare_rate_per_target(df, resfolder):
                 label=ftd[ift] + r': $r_s=${:.2f}'.format(sp[0]), marker='.')
 
     colors = ['royalblue', 'orange', 'g']
-    #fig, ax = plt.subplots()
     x = np.linspace(-2.7, 0, 1000)
-    #g = sns.FacetGrid(df, col='Flare type', hue='Flare type', col_wrap=3, \
-    #        height=3)
-    #sns.scatterplot(df, x='log_Ro', y='rate_per_target', hue='Flare type', \
-    #        alpha=0.5, palette='colorblind')#fill=True,
-    #g.map(sns.regplot, "log_Ro", "rate_per_target", \
-    #        ci=None, scatter_kws={"s": 10})
 
-    #for i, cc in enumerate(colors):
-    #    plt.plot(x, np.polyval(fits[i], x), c=colors[i])
-    #g.set_axis_labels(r'$\log Ro$', r'Flares (star day)$^{-1}$', fontsize=14)  # Single x-axis label for all subplots
-    #g.set_titles(fontsize=35)  # O
     plt.xlabel(r'$\log Ro$', fontsize=14)
     plt.ylabel(r'Flares (star day)$^{-1}$', fontsize=14)
     plt.legend()
     plt.tight_layout()
-    #plt.ylim(df['rate_per_target'].min() - 0.1, \
-    #            df['rate_per_target'].max() + 0.1)
     plt.savefig(resfolder + 'flare_rate_per_target.pdf')
     plt.close()
 
@@ -2769,18 +2563,13 @@ def condense_flare_cascades(df, resfolder):
 
         dfc.drop(columns='FWHM [min]', inplace=True)
         dfc.rename(columns={'full_FWHM [min]':'FWHM [min]'}, inplace=True)
-        # Given the cadence of the raw time axis, the smallest possible
-        # FWHM is 20 s.
-        #dfc.replace({'FWHM [min]':0.}, 0.33, inplace=True)
+
         group_cols = ['LCname', 'n_event']
 
         # Get peak time as mean weighted over energy
         wm = lambda x: pd.Series({'Weighted peak time': \
                 np.average(x['Peak time [BTJD]'], weights=x['Energy [erg]'])})
-        #dfc['Peak time [BTJD]'] \
-        #        = dfc.groupby(group_cols)['Peak time [BTJD]'].transform('mean')
         peak_time_wmean = dfc.groupby(group_cols).apply(wm)
-        #dfc['Peak time [BTJD]'] \
         mm = lambda x: pd.Series({'Mean peak time': \
                 np.mean(x['Peak time [BTJD]'])})
         peak_time_mean = dfc.groupby(group_cols).apply(mm)
@@ -2807,13 +2596,6 @@ def condense_flare_cascades(df, resfolder):
         dfc[cols_to_max] = dfc.groupby(group_cols)[cols_to_max].transform('max')
         dfc['Impulsiveness [min$^{-1}$]'] = dfc['Peak amplitude']/dfc['FWHM [min]']
 
-        # Identifier for every cascade
-        #dfc['ident'] = dfc.groupby(group_cols).ngroup()
-
-        # Weight peak time by relative energy, and then remove simultaneous
-        #f = lambda x: np.average(dfc['Peak time [BTJD]'], weights=dfc['ED [s]'])
-        #weighted_peak_time = dfc.groupby(group_cols).apply(f)
-        #dfc.drop_duplicates(subset='ident', inplace=True)
         dfc.drop_duplicates(subset='Mean peak time', inplace=True)
         dfc.drop(columns='Peak time [BTJD]', inplace=True)
         dfc.rename(columns={'Weighted peak time':'Peak time [BTJD]'}, inplace=True)
@@ -2841,7 +2623,6 @@ def get_non_flaring_stars(resfolder, maxT, maxR, maxTmag, maxProt, maxFAP):
         not_flaring = pickle.load(open(file_without_flares, 'rb'))
         gnf = pd.read_csv(resfolder + 'tic_notflaring_gaia_DR3_reddening.csv')
         keep_idx = gnf.groupby('OBJECT')['ang_sep'].idxmin()
-        #keep_idx = gnf.groupby('OBJECT')['phot_g_mean_mag'].idxmin()
         gnf = gnf.loc[keep_idx].reset_index(drop=True)
         nf_pars = {}
         pp =  ['OBJECT', 'TEFF', 'LOGG', 'MH', 'RADIUS', 'Prot_[days]', 'FAP', \
@@ -2948,5 +2729,8 @@ def multi_var_model(X, a, b, c):
     return a*x + b*y + c
 
 if __name__ == "__main__":
+    '''
+    To be used on SLURM system
+    '''
     #call_LC(sys.argv[1])
     call_sector(sys.argv[1], sys.argv[2])
